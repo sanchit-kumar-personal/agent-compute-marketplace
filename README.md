@@ -23,7 +23,8 @@ An AI-powered sandbox where autonomous agents negotiate cloud compute (GPUs, CPU
 | Agent Logic   | Python 3.11, GPT-4 (LangChain / AutoGen)            |
 | Backend       | FastAPI                                             |
 | Payments      | Stripe SDK, PayPal SDK, Web3.py (ERC-20)            |
-| Database      | PostgreSQL + TimescaleDB                            |
+| Database      | Development: SQLite                                 |
+|               | Production: PostgreSQL + TimescaleDB                |
 | Observability | OpenTelemetry, structured JSON logs                 |
 | Frontend      | Streamlit _(fast)_ or React + Tailwind _(polished)_ |
 
@@ -59,3 +60,61 @@ agent-compute-marketplace/
 ├── .gitignore
 └── README.md
 ```
+
+## Setup
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/yourusername/agent-compute-marketplace.git
+cd agent-compute-marketplace
+```
+
+2. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Set up environment variables:
+
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+4. Initialize the database:
+
+```bash
+alembic upgrade head
+```
+
+5. Run the development server:
+
+```bash
+uvicorn main:app --reload
+```
+
+## Development
+
+- Run tests: `pytest`
+- Format code: `black .`
+- Lint code: `ruff .`
+- Create database migration: `alembic revision --autogenerate -m "description"`
+
+## Environment Variables
+
+Required environment variables in `.env`:
+
+- `DATABASE_URL`: Database connection string
+- `STRIPE_KEY`: Stripe API key
+- `PAYPAL_CLIENT_ID`: PayPal client ID
+- `PAYPAL_SECRET`: PayPal secret key
+- `OPENAI_API_KEY`: OpenAI API key
+
+## API Documentation
+
+Once running, visit:
+
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc

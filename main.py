@@ -6,25 +6,87 @@ It serves as the main entry point for the agent-based compute marketplace,
 where AI agents negotiate cloud compute resources and handle payments.
 """
 
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+from core.settings import Settings
+from negotiation import router as negotiation_router
+
+# Settings dependency
+_settings = None
+
+
+def get_settings() -> Settings:
+    """Dependency that provides application settings."""
+    assert (
+        _settings is not None
+    ), "Settings not initialized. Make sure startup() was called."
+    return _settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI application startup and shutdown events."""
+    # Startup
+    global _settings
+    _settings = Settings()
+    yield
+    # Shutdown
+    _settings = None
+
 
 app = FastAPI(
     title="Agent Compute Marketplace",
-    description="AI-powered marketplace for negotiating cloud compute resources",
-    version="0.1.0"
+    description="A marketplace for agent-based negotiations",
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
-# Configure CORS
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/health")
-async def health_check():
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+    )
+
+
+@app.get("/")
+async def root():
+    """Root endpoint providing API information."""
+    return {
+        "name": "Agent Compute Marketplace",
+        "version": "0.1.0",
+        "description": "A marketplace for agent-based negotiations",
+        "endpoints": {
+            "healthz": "Health check endpoint",
+            "negotiation": "Negotiation related endpoints",
+        },
+    }
+
+
+@app.get("/healthz")
+async def health_check(settings: Settings = Depends(get_settings)):
     """Health check endpoint to verify API status."""
-    return {"status": "healthy", "service": "agent-compute-marketplace"}
+    return {"status": "ok", "app_name": settings.APP_NAME}
+
+
+# Include routers
+app.include_router(negotiation_router, prefix="/negotiation")
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
