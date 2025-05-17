@@ -8,12 +8,14 @@ This module defines Pydantic models for:
 - Type checking
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, Dict
 from datetime import datetime
 
+
 class ComputeResource(BaseModel):
     """Schema for compute resource data."""
+
     id: Optional[int] = None
     type: str
     specs: Dict[str, str]
@@ -24,8 +26,10 @@ class ComputeResource(BaseModel):
     class Config:
         from_attributes = True
 
+
 class Negotiation(BaseModel):
     """Schema for negotiation session data."""
+
     id: Optional[int] = None
     buyer_id: str
     seller_id: str
@@ -36,8 +40,10 @@ class Negotiation(BaseModel):
     class Config:
         from_attributes = True
 
+
 class Transaction(BaseModel):
     """Schema for transaction data."""
+
     id: Optional[int] = None
     negotiation_id: int
     amount: float
@@ -46,4 +52,4 @@ class Transaction(BaseModel):
     created_at: Optional[datetime] = None
 
     class Config:
-        from_attributes = True 
+        from_attributes = True

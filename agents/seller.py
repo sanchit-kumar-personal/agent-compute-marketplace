@@ -10,12 +10,13 @@ compute resource negotiations. The seller agent is responsible for:
 - Confirming payment receipt
 """
 
+
 class SellerAgent:
     """Autonomous agent that negotiates to sell compute resources."""
-    
+
     def __init__(self):
         """Initialize the seller agent with default parameters."""
-        pass
+        self.min_price = 10.0  # Minimum acceptable price
 
     async def evaluate_offer(self):
         """Evaluate an incoming offer from a buyer agent."""
@@ -23,8 +24,11 @@ class SellerAgent:
 
     async def make_counter_offer(self):
         """Generate and submit a counter-offer to the buyer."""
-        pass
+        return {
+            "price": 12.0,  # Higher than typical initial offers
+            "terms": {"availability": "immediate", "min_hours": 1},
+        }
 
     async def confirm_payment(self):
         """Verify payment receipt and finalize resource allocation."""
-        pass 
+        pass

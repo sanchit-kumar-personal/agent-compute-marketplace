@@ -10,16 +10,17 @@ compute resource negotiations. The buyer agent is responsible for:
 - Initiating payment flows
 """
 
+
 class BuyerAgent:
     """Autonomous agent that negotiates to purchase compute resources."""
-    
+
     def __init__(self):
         """Initialize the buyer agent with default parameters."""
         pass
 
     async def make_offer(self):
         """Generate and submit an initial offer for compute resources."""
-        pass
+        return {"price": 0, "terms": {}}
 
     async def evaluate_counter_offer(self):
         """Evaluate a counter-offer from the seller agent."""
@@ -27,4 +28,4 @@ class BuyerAgent:
 
     async def finalize_deal(self):
         """Accept final terms and initiate payment flow."""
-        pass 
+        pass

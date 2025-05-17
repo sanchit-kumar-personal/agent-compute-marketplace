@@ -15,6 +15,6 @@ from typing import Dict
 PROMPT_TEMPLATES: Dict[str, str] = {
     "initial_offer": "",  # Template for generating initial offers
     "counter_offer": "",  # Template for generating counter-offers
-    "evaluation": "",     # Template for evaluating offers
-    "final_terms": ""     # Template for finalizing deal terms
-} 
+    "evaluation": "",  # Template for evaluating offers
+    "final_terms": "",  # Template for finalizing deal terms
+}
