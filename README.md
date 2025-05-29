@@ -34,29 +34,21 @@ An AI-powered sandbox where autonomous agents negotiate cloud compute (GPUs, CPU
 
 ```text
 agent-compute-marketplace/
-├── agents/                # Buyer & seller agent classes
-│   ├── buyer.py
-│   └── seller.py
-├── negotiation/           # FSM & GPT logic
-│   ├── engine.py
-│   └── prompts/
-├── payments/              # Payment adapters
-│   ├── stripe.py
-│   ├── paypal.py
-│   └── crypto.py
-├── db/                    # SQLAlchemy models & migrations
-│   ├── models.py
-│   └── seed.py
-├── api/                   # FastAPI routes & schemas
-│   ├── routes.py
-│   └── schemas.py
-├── tests/                 # Pytest suites
-│   └── test_negotiation.py
-├── main.py                # App entry-point
+├── agents/            # Buyer & seller agent classes
+├── api/               # FastAPI routes and schemas
+├── core/              # Shared settings, dependency utilities
+├── db/                # SQLAlchemy models and DB session helpers
+├── alembic/           # Migration env; versions/ sub-folder holds auto scripts
+│   └── alembic.ini
+├── negotiation/       # GPT-powered FSM + prompt templates
+├── payments/          # Stripe, PayPal, crypto gateway adapters
+├── tests/             # Pytest suites
+├── docs/              # Extra markdown or ADRs (optional)
+├── main.py            # FastAPI entry-point
 ├── .env.example
 ├── requirements.txt
 ├── pyproject.toml
-├── setup.md               # Quick-start guide
+├── setup.md
 ├── .gitignore
 └── README.md
 ```

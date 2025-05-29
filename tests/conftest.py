@@ -3,7 +3,8 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
-from main import app, Settings
+from main import app
+from core.settings import Settings
 from unittest.mock import patch
 
 
@@ -50,7 +51,6 @@ def mock_settings():
 
 @pytest.fixture
 def client(mock_settings):
-    global _settings
-    with patch("main._settings", mock_settings):
+    with patch("core.dependencies._settings", mock_settings):
         with TestClient(app) as test_client:
             yield test_client

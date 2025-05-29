@@ -10,7 +10,7 @@ This module defines SQLAlchemy ORM models for:
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from datetime import datetime, UTC
 
 Base = declarative_base()
@@ -55,3 +55,20 @@ class Transaction(Base):
     payment_method = Column(String(20))  # e.g., "stripe", "paypal", "crypto"
     status = Column(String(20))  # e.g., "pending", "completed", "failed"
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class Quote(Base):
+    """Model representing resource quotes."""
+
+    __tablename__ = "quotes"
+
+    id = Column(Integer, primary_key=True)
+    buyer_id = Column(String(50))
+    resource_type = Column(String(50))
+    duration_hours = Column(Integer)
+    price = Column(Float, nullable=False)  # Price is required
+    status = Column(String(20), default="priced")  # priced, accepted, rejected
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
+    def __repr__(self):
+        return f"<Quote(id={self.id}, status={self.status})"
