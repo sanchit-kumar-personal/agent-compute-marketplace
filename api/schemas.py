@@ -8,7 +8,7 @@ This module defines Pydantic models for:
 - Type checking
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict
 from datetime import datetime
 
@@ -23,8 +23,7 @@ class ComputeResource(BaseModel):
     status: str
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Negotiation(BaseModel):
@@ -37,8 +36,7 @@ class Negotiation(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Transaction(BaseModel):
@@ -51,5 +49,4 @@ class Transaction(BaseModel):
     status: str
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

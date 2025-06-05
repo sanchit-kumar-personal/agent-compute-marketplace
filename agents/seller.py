@@ -32,3 +32,14 @@ class SellerAgent:
     async def confirm_payment(self):
         """Verify payment receipt and finalize resource allocation."""
         pass
+
+    def generate_quote(self, quote: dict) -> float:
+        """Generate a price quote for the requested compute resources.
+
+        Args:
+            quote: Quote request details containing duration_hours
+
+        Returns:
+            float: Quoted price for the compute resources
+        """
+        return 1.50 * quote["duration_hours"]

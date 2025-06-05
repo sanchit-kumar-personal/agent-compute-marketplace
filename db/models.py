@@ -9,9 +9,10 @@ This module defines SQLAlchemy ORM models for:
 - Audit logs
 """
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum
+from sqlalchemy.orm import declarative_base
 from datetime import datetime, UTC
+from enum import Enum as PyEnum
 
 Base = declarative_base()
 
@@ -55,3 +56,26 @@ class Transaction(Base):
     payment_method = Column(String(20))  # e.g., "stripe", "paypal", "crypto"
     status = Column(String(20))  # e.g., "pending", "completed", "failed"
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class QuoteStatus(PyEnum):
+    pending = "pending"
+    priced = "priced"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
+class Quote(Base):
+    __tablename__ = "quotes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    buyer_id = Column(String(50), nullable=False, index=True)
+    resource_type = Column(String(50), nullable=False)
+    duration_hours = Column(Integer, nullable=False)
+    price = Column(Float, default=0.0)
+    status = Column(Enum(QuoteStatus), default=QuoteStatus.pending)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    negotiation_log = Column(Text, default="[]")
+
+    def __repr__(self):
+        return f"<Quote(id={self.id}, status={self.status})>"
