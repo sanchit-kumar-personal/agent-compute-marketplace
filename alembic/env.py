@@ -1,4 +1,5 @@
 from logging.config import fileConfig
+import os
 
 from alembic import context
 from sqlmodel import SQLModel, create_engine
@@ -12,7 +13,8 @@ except Exception:
     from pydantic_settings import BaseSettings
 
     class FallbackSettings(BaseSettings):
-        DATABASE_URL: str = "sqlite:///./test.db"
+        DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+        DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
     settings = FallbackSettings()
 
@@ -38,6 +40,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,  # Enable type comparison for better migrations
+        compare_server_default=True,  # Enable server default comparison
     )
 
     with context.begin_transaction():
@@ -46,11 +50,27 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    # Create engine directly instead of importing from db module
-    connectable = create_engine(settings.DATABASE_URL)
+    # Create engine with appropriate configuration for database type
+    if settings.DATABASE_URL.startswith("postgresql"):
+        connectable = create_engine(
+            settings.DATABASE_URL,
+            echo=getattr(settings, "DEBUG", False),
+            future=True,
+            pool_pre_ping=True,
+        )
+    else:
+        # SQLite fallback
+        connectable = create_engine(
+            settings.DATABASE_URL, echo=getattr(settings, "DEBUG", False), future=True
+        )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,  # Enable type comparison for better migrations
+            compare_server_default=True,  # Enable server default comparison
+        )
 
         with context.begin_transaction():
             context.run_migrations()

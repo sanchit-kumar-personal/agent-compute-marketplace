@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.settings import Settings
 from core.dependencies import get_settings, init_settings, clear_settings
 from negotiation import router as negotiation_router
-from db.session import init_db
+from db.session import init_db, init_async_db
 from api import routes
 
 
@@ -24,8 +24,18 @@ async def lifespan(app: FastAPI):
     # Startup
     init_settings()
     settings = get_settings()
-    # Initialize database
-    init_db(settings)
+
+    # Initialize database (try async first, fallback to sync)
+    try:
+        if settings.DATABASE_URL.startswith("postgresql"):
+            await init_async_db(settings)
+        else:
+            init_db(settings)
+    except Exception as e:
+        # Fallback to sync initialization
+        print(f"Async database initialization failed, falling back to sync: {e}")
+        init_db(settings)
+
     yield
     # Shutdown
     clear_settings()
@@ -33,7 +43,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Agent Compute Marketplace",
-    description="A marketplace for agent-based negotiations",
+    description="A marketplace for agent-based negotiations with PostgreSQL MCP support",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -63,7 +73,7 @@ async def root():
     return {
         "name": "Agent Compute Marketplace",
         "version": "0.1.0",
-        "description": "A marketplace for agent-based negotiations",
+        "description": "A marketplace for agent-based negotiations with PostgreSQL MCP support",
         "endpoints": {
             "healthz": "Health check endpoint",
             "negotiation": "Negotiation related endpoints",
@@ -75,7 +85,15 @@ async def root():
 @app.get("/healthz")
 async def health_check(settings: Settings = Depends(get_settings)):
     """Health check endpoint to verify API status."""
-    return {"status": "ok", "app_name": settings.APP_NAME}
+    db_type = (
+        "PostgreSQL" if settings.DATABASE_URL.startswith("postgresql") else "SQLite"
+    )
+    return {
+        "status": "ok",
+        "app_name": settings.APP_NAME,
+        "database": db_type,
+        "environment": settings.ENVIRONMENT,
+    }
 
 
 # Include routers

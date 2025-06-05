@@ -104,6 +104,8 @@ Required environment variables in `.env`:
 - `PAYPAL_SECRET`: PayPal secret key
 - `OPENAI_API_KEY`: OpenAI API key
 
+**Database Strategy**: SQLite remains valid for quick hacking; set `DATABASE_URL` to switch.
+
 ## API Documentation
 
 Once running, visit:

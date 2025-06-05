@@ -14,9 +14,14 @@ stripe>=7.11.0
 uvicorn>=0.27.0
 web3>=6.11.1
 
+# Database drivers
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.7
+
 # Development dependencies
 black>=24.1.1
 pytest>=8.0.0
 pytest-asyncio>=0.23.5
 pytest-cov>=4.1.0
+pytest-postgresql>=6.0.0
 ruff>=0.1.14

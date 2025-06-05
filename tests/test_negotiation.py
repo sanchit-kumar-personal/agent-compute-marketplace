@@ -60,3 +60,32 @@ async def test_counter_offer(seller_agent):
     counter_offer = await seller_agent.make_counter_offer()
     assert isinstance(counter_offer, dict)
     assert counter_offer["price"] > initial_offer["price"]
+
+
+@pytest.mark.unit
+def test_negotiate_quote_flow(client):
+    """Test the full quote negotiation flow from creation to pricing."""
+    # Create quote first
+    resp = client.post(
+        "/api/quote-request",
+        json={"buyer_id": "alice", "resource_type": "GPU", "duration_hours": 4},
+    )
+    assert resp.status_code == 201
+    quote_id = resp.json()["quote_id"]
+
+    # Negotiate
+    nego = client.post(f"/api/quote/{quote_id}/negotiate")
+    assert nego.status_code == 200
+    data = nego.json()
+    assert data["status"] == "priced"
+    assert data["price"] > 0
+
+    # Verify negotiation log
+    log = data["negotiation_log"]  # Now directly a list
+    assert len(log) == 1
+    assert log[0]["role"] == "seller"
+
+    # Try negotiating again - should fail with 409
+    nego2 = client.post(f"/api/quote/{quote_id}/negotiate")
+    assert nego2.status_code == 409
+    assert "not in pending status" in nego2.json()["detail"]

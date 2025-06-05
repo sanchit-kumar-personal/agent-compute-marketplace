@@ -9,21 +9,24 @@ This module defines FastAPI routes for:
 - System health and metrics
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Dict, Any, Union
 from sqlalchemy.orm import Session
 from . import schemas
 from db.session import get_db
-from db.models import Quote
-from pydantic import BaseModel, ConfigDict
+from db.models import Quote, QuoteStatus
+from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 from agents.seller import SellerAgent
-from db.models import QuoteStatus
+from negotiation.engine import NegotiationEngine
+import json
 
 router = APIRouter()
 
-# Initialize seller agent for quote generation
-seller_agent = SellerAgent()
+
+def get_seller_agent():
+    """FastAPI dependency for SellerAgent."""
+    return SellerAgent()
 
 
 # Resource routes
@@ -79,18 +82,35 @@ class QuoteOut(BaseModel):
     price: float  # Price is required
     status: str
     created_at: datetime
+    negotiation_log: List[Dict[str, Any]]
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("negotiation_log", mode="before")
+    @classmethod
+    def parse_negotiation_log(
+        cls, value: Union[str, List, None]
+    ) -> List[Dict[str, Any]]:
+        """Parse negotiation_log from various input types into a list of dicts."""
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        return []
 
 
 @router.post("/quote-request", response_model=dict, status_code=201)
 def create_quote(req: QuoteRequest, db: Session = Depends(get_db)):
-    # Calculate price using seller agent
+    # Create quote with pending status - price will be set during negotiation
     quote_data = req.model_dump()
-    price = seller_agent.generate_quote(quote_data)
-
-    # Create quote with calculated price and set status to priced
-    quote = Quote(**quote_data, price=price, status=QuoteStatus.priced)
+    quote = Quote(**quote_data, status=QuoteStatus.pending)
     db.add(quote)
     db.commit()
     db.refresh(quote)
@@ -103,3 +123,34 @@ def get_quote(quote_id: int, db: Session = Depends(get_db)):
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
     return quote
+
+
+@router.post("/quote/{quote_id}/negotiate", response_model=QuoteOut)
+async def negotiate_quote(
+    quote_id: int,
+    db: Session = Depends(get_db),
+    seller: SellerAgent = Depends(get_seller_agent),
+):
+    """Negotiate a quote price.
+
+    Returns 409 if quote is already priced.
+    Returns 404 if quote not found.
+    """
+    quote = db.get(Quote, quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Quote not found"
+        )
+
+    if quote.status != QuoteStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Quote is not in pending status",
+        )
+
+    engine = NegotiationEngine(seller)
+    try:
+        updated = engine.run(db, quote_id)
+        return updated
+    except ValueError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
