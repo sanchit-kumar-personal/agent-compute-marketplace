@@ -39,58 +39,86 @@ class NegotiationEngine:
         self.state = "initialized"
         self.seller = seller or SellerAgent()
 
-    async def start_negotiation(self, initial_terms: Dict[str, Any]):
+    async def start_negotiation(
+        self, initial_terms: Dict[str, Any]
+    ) -> NegotiationState:
         """Begin a new negotiation session with initial terms."""
+        if not initial_terms:
+            raise ValueError("Initial terms cannot be empty")
         return NegotiationState(state="initialized", terms=initial_terms)
 
-    async def process_offer(self, offer: Dict[str, Any]):
+    async def process_offer(self, offer: Dict[str, Any]) -> Dict[str, Any]:
         """Process an offer and determine the next action."""
-        pass
+        if not offer or "price" not in offer:
+            raise ValueError("Invalid offer format")
+        return {"status": "processed", "offer": offer}
 
-    async def generate_counter_offer(self, context: Dict[str, Any]):
+    async def generate_counter_offer(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a context-aware counter-offer using GPT."""
-        pass
+        if not context:
+            raise ValueError("Context required for counter-offer")
+        return {"status": "counter_offer_generated", "context": context}
 
-    async def finalize_negotiation(self):
+    async def finalize_negotiation(self) -> Dict[str, str]:
         """Complete the negotiation and prepare for settlement."""
-        pass
+        return {"status": "finalized", "state": "completed"}
 
-    def run(self, db: Session, quote_id: int) -> Quote:
+    async def run(self, db: Session, quote_id: int) -> Quote:
         """Run the quote negotiation finite-state machine.
 
-        Only runs if Quote.status == pending:
-        1. Calls SellerAgent.generate_quote → gets price
-        2. Updates quote.price and quote.status = QuoteStatus.priced
-        3. Appends a message object to negotiation_log
+        Args:
+            db: Database session
+            quote_id: ID of the quote to negotiate
+
+        Returns:
+            Quote: Updated quote with negotiated price
+
+        Raises:
+            ValueError: If quote not found or not in pending status
+            RuntimeError: If negotiation fails
         """
         quote: Quote | None = db.get(Quote, quote_id)
-        if not quote or quote.status != QuoteStatus.pending:
-            raise ValueError("Quote not found or not pending")
+        if not quote:
+            raise ValueError(f"Quote {quote_id} not found")
 
-        price = self.seller.generate_quote(quote.__dict__)
-        quote.price = price
-        quote.status = QuoteStatus.priced
+        if quote.status != QuoteStatus.pending:
+            raise ValueError(f"Quote {quote_id} is not in pending status")
 
         try:
-            log = json.loads(quote.negotiation_log)
-            if not isinstance(log, list):
+            # Generate price through seller agent
+            price = await self.seller.generate_quote(quote.__dict__)
+
+            # Update quote
+            quote.price = price
+            quote.status = QuoteStatus.priced
+
+            # Update negotiation log
+            try:
+                log = json.loads(quote.negotiation_log)
+                if not isinstance(log, list):
+                    log = []
+            except json.JSONDecodeError:
                 log = []
-        except json.JSONDecodeError:
-            log = []
 
-        log.append(
-            {
-                "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-                "role": "seller",
-                "price": price,
-            }
-        )
-        quote.negotiation_log = log  # Will be automatically JSON encoded
+            # Add negotiation entry
+            log.append(
+                {
+                    "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "role": "seller",
+                    "price": price,
+                    "action": "price_quote",
+                }
+            )
+            quote.negotiation_log = log
 
-        logger.info(f"Negotiated quote {quote_id} price={price}")
+            logger.info(f"Successfully negotiated quote {quote_id} price={price}")
 
-        db.add(quote)  # Let FastAPI handle the transaction
-        return quote
+            db.add(quote)
+            return quote
+
+        except Exception as e:
+            logger.error(f"Failed to negotiate quote {quote_id}: {str(e)}")
+            raise RuntimeError(f"Negotiation failed: {str(e)}")
 
 
 def start_negotiation() -> SimpleNamespace:

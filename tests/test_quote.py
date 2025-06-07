@@ -37,15 +37,18 @@ def test_quote_workflow(client):
     response = client.post(f"/api/quote/{quote_id}/negotiate")
     assert response.status_code == 200
     quote = response.json()
-    assert quote["status"] == "priced"  # Now it should be priced
-    assert quote["price"] == 6.0  # 1.50 * 4 hours from SellerAgent.generate_quote()
-    assert len(quote["negotiation_log"]) == 1  # One negotiation message
+    assert quote["status"] == "priced"
+    assert quote["price"] == 8.0  # GPU base price (2.0) * 4 hours
+
+    # Verify negotiation log
+    assert len(quote["negotiation_log"]) == 1
+    assert quote["negotiation_log"][0]["role"] == "seller"
+    assert quote["negotiation_log"][0]["price"] == 8.0
 
 
 @pytest.mark.unit
-def test_quote_missing_duration_field(client):
-    """Test that missing duration_hours field returns 422 Unprocessable Entity."""
-    # Missing "duration_hours" should return 422 Unprocessable Entity
+def test_invalid_quote_request(client):
+    """Test validation of quote request parameters."""
     response = client.post(
         "/api/quote-request",
         json={
@@ -93,7 +96,7 @@ def test_quote_workflow_postgres(postgres_client):
     assert response.status_code == 200
     quote = response.json()
     assert quote["status"] == "priced"
-    assert quote["price"] == 12.0  # 1.50 * 8 hours
+    assert quote["price"] == 16.0  # GPU base price (2.0) * 8 hours
 
 
 @pytest.mark.integration

@@ -1,45 +1,63 @@
-"""
-Seller Agent Module
+import json
+import logging
+from pathlib import Path
+from core.llm import get_llm
+from langchain_core.messages import HumanMessage, SystemMessage
+from typing import Dict, Any
 
-This module implements the autonomous seller agent that participates in
-compute resource negotiations. The seller agent is responsible for:
-- Managing available compute inventory
-- Evaluating incoming offers
-- Generating counter-offers
-- Finalizing deal terms
-- Confirming payment receipt
-"""
+logger = logging.getLogger(__name__)
+
+SYSTEM_PROMPT = (
+    Path(__file__).parent.parent / "negotiation" / "prompts" / "seller_system.txt"
+)
+
+# Base pricing for different resource types (per hour)
+BASE_PRICES = {
+    "GPU": 2.0,
+    "CPU": 0.5,
+    "TPU": 5.0,
+}
 
 
 class SellerAgent:
-    """Autonomous agent that negotiates to sell compute resources."""
-
-    def __init__(self):
-        """Initialize the seller agent with default parameters."""
-        self.min_price = 10.0  # Minimum acceptable price
-
-    async def evaluate_offer(self):
-        """Evaluate an incoming offer from a buyer agent."""
-        pass
-
-    async def make_counter_offer(self):
-        """Generate and submit a counter-offer to the buyer."""
-        return {
-            "price": 12.0,  # Higher than typical initial offers
-            "terms": {"availability": "immediate", "min_hours": 1},
-        }
-
-    async def confirm_payment(self):
-        """Verify payment receipt and finalize resource allocation."""
-        pass
-
-    def generate_quote(self, quote: dict) -> float:
-        """Generate a price quote for the requested compute resources.
+    async def generate_quote(self, quote: Dict[str, Any]) -> float:
+        """Generate a quote price using LLM or fallback to deterministic pricing.
 
         Args:
-            quote: Quote request details containing duration_hours
+            quote: Quote details including resource_type and duration_hours
 
         Returns:
-            float: Quoted price for the compute resources
+            float: Calculated price for the quote
+
+        Note:
+            Will attempt to use LLM for dynamic pricing, but falls back to
+            deterministic pricing if LLM fails or returns invalid response.
         """
-        return 1.50 * quote["duration_hours"]
+        try:
+            llm = get_llm()
+            system_msg = SYSTEM_PROMPT.read_text()
+            user_msg = json.dumps(
+                {
+                    "resource_type": quote["resource_type"],
+                    "duration_hours": quote["duration_hours"],
+                }
+            )
+
+            response = await llm.ainvoke(
+                [
+                    SystemMessage(content=system_msg),
+                    HumanMessage(content=user_msg),
+                ]
+            )
+            price = float(response.content.strip())
+            if price <= 0:
+                raise ValueError("LLM returned non-positive price")
+            return price
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to generate price with LLM: {e}. Using fallback pricing."
+            )
+            # Fallback to deterministic pricing
+            base_price = BASE_PRICES.get(quote["resource_type"].upper(), 1.0)
+            return base_price * quote["duration_hours"]

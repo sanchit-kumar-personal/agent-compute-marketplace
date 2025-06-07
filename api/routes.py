@@ -150,7 +150,7 @@ async def negotiate_quote(
 
     engine = NegotiationEngine(seller)
     try:
-        updated = engine.run(db, quote_id)
+        updated = await engine.run(db, quote_id)
         return updated
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))

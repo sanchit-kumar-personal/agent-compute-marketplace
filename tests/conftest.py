@@ -10,6 +10,36 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from db.models import Base
+from langchain_core.messages import AIMessage
+import json
+
+
+@pytest.fixture(autouse=True)
+def mock_llm(monkeypatch):
+    """Mock LLM for all tests."""
+
+    class DummyChatOpenAI:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def ainvoke(self, messages, *args, **kwargs):
+            """Mock price generation to match fallback pricing."""
+            # Extract quote details from the user message
+            user_msg = [m for m in messages if m.type == "human"][0].content
+            quote = json.loads(user_msg)
+
+            # Use same pricing logic as fallback
+            base_prices = {
+                "GPU": 2.0,
+                "CPU": 0.5,
+                "TPU": 5.0,
+            }
+            base_price = base_prices.get(quote["resource_type"].upper(), 1.0)
+            price = base_price * quote["duration_hours"]
+            return AIMessage(content=str(price))
+
+    monkeypatch.setattr("langchain_openai.ChatOpenAI", DummyChatOpenAI)
+    yield
 
 
 @pytest.fixture(autouse=True)

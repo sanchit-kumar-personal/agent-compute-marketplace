@@ -53,15 +53,6 @@ async def test_offer_generation(buyer_agent):
     assert "price" in offer
 
 
-@pytest.mark.asyncio
-async def test_counter_offer(seller_agent):
-    """Test seller agent's counter-offer generation."""
-    initial_offer = {"price": 8.0, "hours": 4}
-    counter_offer = await seller_agent.make_counter_offer()
-    assert isinstance(counter_offer, dict)
-    assert counter_offer["price"] > initial_offer["price"]
-
-
 @pytest.mark.unit
 def test_negotiate_quote_flow(client):
     """Test the full quote negotiation flow from creation to pricing."""
@@ -78,7 +69,7 @@ def test_negotiate_quote_flow(client):
     assert nego.status_code == 200
     data = nego.json()
     assert data["status"] == "priced"
-    assert data["price"] > 0
+    assert data["price"] == 8.0  # GPU base price (2.0) * 4 hours
 
     # Verify negotiation log
     log = data["negotiation_log"]  # Now directly a list

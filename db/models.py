@@ -100,7 +100,7 @@ class Quote(Base):
         else:
             try:
                 self._negotiation_log = json.dumps(value)
-            except (TypeError, json.JSONEncodeError) as e:
+            except TypeError as e:
                 raise ValueError(f"Invalid negotiation log data: {str(e)}")
 
     def __repr__(self):
