@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from db.models import Quote, QuoteStatus
 from agents.seller import SellerAgent
+from agents.buyer import BuyerAgent
 import logging
 
 logger = logging.getLogger(__name__)
@@ -63,15 +64,16 @@ class NegotiationEngine:
         """Complete the negotiation and prepare for settlement."""
         return {"status": "finalized", "state": "completed"}
 
-    async def run(self, db: Session, quote_id: int) -> Quote:
-        """Run the quote negotiation finite-state machine.
+    async def run_loop(self, db: Session, quote_id: int, max_turns: int = 4) -> Quote:
+        """Run multi-turn quote negotiation between buyer and seller.
 
         Args:
             db: Database session
             quote_id: ID of the quote to negotiate
+            max_turns: Maximum number of negotiation turns before rejecting
 
         Returns:
-            Quote: Updated quote with negotiated price
+            Quote: Updated quote with final negotiated price and status
 
         Raises:
             ValueError: If quote not found or not in pending status
@@ -85,14 +87,7 @@ class NegotiationEngine:
             raise ValueError(f"Quote {quote_id} is not in pending status")
 
         try:
-            # Generate price through seller agent
-            price = await self.seller.generate_quote(quote.__dict__)
-
-            # Update quote
-            quote.price = price
-            quote.status = QuoteStatus.priced
-
-            # Update negotiation log
+            # Initialize negotiation log
             try:
                 log = json.loads(quote.negotiation_log)
                 if not isinstance(log, list):
@@ -100,7 +95,8 @@ class NegotiationEngine:
             except json.JSONDecodeError:
                 log = []
 
-            # Add negotiation entry
+            # Initial seller quote
+            price = await self.seller.generate_quote(quote.__dict__)
             log.append(
                 {
                     "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -109,9 +105,115 @@ class NegotiationEngine:
                     "action": "price_quote",
                 }
             )
+            quote.price = price
+            quote.status = QuoteStatus.priced
             quote.negotiation_log = log
 
-            logger.info(f"Successfully negotiated quote {quote_id} price={price}")
+            db.add(quote)
+            return quote
+
+        except Exception as e:
+            logger.error(f"Failed to negotiate quote {quote_id}: {str(e)}")
+            raise RuntimeError(f"Negotiation failed: {str(e)}")
+
+    async def negotiate(self, db: Session, quote_id: int, max_turns: int = 4) -> Quote:
+        """Run multi-turn quote negotiation between buyer and seller.
+
+        Args:
+            db: Database session
+            quote_id: ID of the quote to negotiate
+            max_turns: Maximum number of negotiation turns before rejecting
+
+        Returns:
+            Quote: Updated quote with final negotiated price and status
+
+        Raises:
+            ValueError: If quote not found or not in priced status
+            RuntimeError: If negotiation fails
+        """
+        quote: Quote | None = db.get(Quote, quote_id)
+        if not quote:
+            raise ValueError(f"Quote {quote_id} not found")
+
+        if quote.status != QuoteStatus.priced:
+            raise ValueError(f"Quote {quote_id} is not in priced status")
+
+        try:
+            # Initialize agents
+            buyer = BuyerAgent(max_wtp=quote.buyer_max_price)
+
+            # Initialize negotiation log
+            try:
+                log = json.loads(quote.negotiation_log)
+                if not isinstance(log, list):
+                    log = []
+            except json.JSONDecodeError:
+                log = []
+
+            # Negotiation loop
+            turns = 0
+            price = quote.price
+            while turns < max_turns:
+                # Get buyer response
+                buyer_response = await buyer.respond({"price": price})
+
+                # Log buyer response
+                log.append(
+                    {
+                        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+                        "role": "buyer",
+                        "response": buyer_response,
+                        "action": (
+                            "counter_offer" if buyer_response != "accept" else "accept"
+                        ),
+                    }
+                )
+
+                # Check if buyer accepts
+                if buyer_response == "accept":
+                    quote.status = QuoteStatus.accepted
+                    break
+
+                # Get seller counter-offer to buyer's price
+                try:
+                    counter_price = float(buyer_response)
+                    price = await self.seller.generate_quote(
+                        {**quote.__dict__, "counter_price": counter_price}
+                    )
+
+                    # Log seller response
+                    log.append(
+                        {
+                            "timestamp": datetime.datetime.now(
+                                datetime.UTC
+                            ).isoformat(),
+                            "role": "seller",
+                            "price": price,
+                            "action": "counter_offer",
+                        }
+                    )
+
+                    quote.price = price
+                    quote.status = QuoteStatus.countered
+
+                except ValueError:
+                    logger.error(f"Invalid buyer response: {buyer_response}")
+                    quote.status = QuoteStatus.rejected
+                    break
+
+                turns += 1
+
+            # If max turns reached without acceptance, mark as rejected
+            if turns >= max_turns and quote.status != QuoteStatus.accepted:
+                quote.status = QuoteStatus.rejected
+
+            # Update negotiation log
+            quote.negotiation_log = log
+
+            logger.info(
+                f"Completed negotiation for quote {quote_id} "
+                f"status={quote.status} price={quote.price}"
+            )
 
             db.add(quote)
             return quote

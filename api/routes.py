@@ -150,7 +150,54 @@ async def negotiate_quote(
 
     engine = NegotiationEngine(seller)
     try:
-        updated = await engine.run(db, quote_id)
+        updated = await engine.run_loop(db, quote_id)
+        db.commit()
+        return updated
+    except ValueError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+
+
+@router.post("/quote/{quote_id}/negotiate/auto", response_model=QuoteOut)
+async def auto_negotiate_quote(
+    quote_id: int,
+    db: Session = Depends(get_db),
+    seller: SellerAgent = Depends(get_seller_agent),
+):
+    """Run automated multi-turn negotiation for a quote.
+
+    Returns:
+        200: Successfully completed negotiation (accepted/rejected)
+        404: Quote not found
+        409: Quote already negotiated
+        400: Invalid quote state or negotiation error
+    """
+    quote = db.get(Quote, quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Quote not found"
+        )
+
+    if quote.status == QuoteStatus.pending:
+        # First get initial quote
+        engine = NegotiationEngine(seller)
+        try:
+            quote = await engine.run_loop(db, quote_id)
+            db.commit()
+        except ValueError as err:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)
+            )
+
+    if quote.status != QuoteStatus.priced:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Quote is not in priced status",
+        )
+
+    # Now start negotiation
+    try:
+        updated = await engine.negotiate(db, quote_id)
+        db.commit()
         return updated
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))

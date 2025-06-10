@@ -66,6 +66,7 @@ class QuoteStatus(PyEnum):
     priced = "priced"
     accepted = "accepted"
     rejected = "rejected"
+    countered = "countered"
 
 
 class Quote(Base):
@@ -76,6 +77,7 @@ class Quote(Base):
     resource_type = Column(String(50), nullable=False)
     duration_hours = Column(Integer, nullable=False)
     price = Column(Float, default=0.0)
+    buyer_max_price = Column(Float(10, 2), nullable=False, server_default="0.0")
     status = Column(Enum(QuoteStatus), default=QuoteStatus.pending)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     _negotiation_log = Column(

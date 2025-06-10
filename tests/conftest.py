@@ -14,6 +14,33 @@ from langchain_core.messages import AIMessage
 import json
 
 
+class OpenAIResponse:
+    def __init__(self, content):
+        self.choices = [
+            type(
+                "Choice",
+                (),
+                {
+                    "message": type(
+                        "Message", (), {"content": content, "role": "assistant"}
+                    )()
+                },
+            )()
+        ]
+
+    def model_dump(self):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": self.choices[0].message.content,
+                        "role": self.choices[0].message.role,
+                    }
+                }
+            ]
+        }
+
+
 @pytest.fixture(autouse=True)
 def mock_llm(monkeypatch):
     """Mock LLM for all tests."""
@@ -38,7 +65,50 @@ def mock_llm(monkeypatch):
             price = base_price * quote["duration_hours"]
             return AIMessage(content=str(price))
 
+    class DummyAsyncOpenAI:
+        def __init__(self, *args, **kwargs):
+            self.chat = type(
+                "Chat",
+                (),
+                {"completions": type("Completions", (), {"create": self.create})()},
+            )()
+
+        async def create(self, *args, **kwargs):
+            # Extract quote details from the messages
+            messages = kwargs.get("messages", [])
+            system_msg = next(m["content"] for m in messages if m["role"] == "system")
+            user_msg = next(m["content"] for m in messages if m["role"] == "user")
+
+            # Parse user message
+            data = json.loads(user_msg)
+
+            # If this is a buyer response (has seller_price)
+            if "seller_price" in data:
+                # Extract max price from system prompt
+                import re
+
+                max_price = float(re.search(r"<= (\d+\.?\d*)", system_msg).group(1))
+                price = data["seller_price"]
+                response = (
+                    "accept" if price <= max_price else str(price * 0.8)
+                )  # Counter with 80% of price
+                return OpenAIResponse(response)
+
+            # If this is a seller quote (has resource_type)
+            if "resource_type" in data:
+                base_prices = {
+                    "GPU": 2.0,
+                    "CPU": 0.5,
+                    "TPU": 5.0,
+                }
+                base_price = base_prices.get(data["resource_type"].upper(), 1.0)
+                price = base_price * data["duration_hours"]
+                return OpenAIResponse(str(price))
+
+            return OpenAIResponse("10.0")  # Fallback response
+
     monkeypatch.setattr("langchain_openai.ChatOpenAI", DummyChatOpenAI)
+    monkeypatch.setattr("openai.AsyncOpenAI", DummyAsyncOpenAI)
     yield
 
 

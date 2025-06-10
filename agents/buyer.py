@@ -1,58 +1,62 @@
 """
-Buyer Agent Module
+BuyerAgent Module
 
-This module implements the buyer agent that participates in
-compute resource negotiations. The buyer agent is responsible for:
-- Defining compute requirements
-- Making initial offers
-- Evaluating counter-offers
-- Accepting/rejecting final terms
-- Initiating payment flows
+This module implements a buyer agent that can negotiate prices for compute resources.
+The agent accepts if the price is below max willingness to pay, otherwise makes counter-offers.
 """
 
-import httpx
+import json
+from core.llm import get_llm
 
 
 class BuyerAgent:
-    """Agent that represents buyers in the marketplace."""
+    """Accepts if price ≤ max_wtp, else proposes counter-offer."""
 
-    def __init__(self):
-        """Initialize the buyer agent with default parameters."""
-        pass
-
-    async def make_offer(self):
-        """Generate and submit an initial offer for compute resources."""
-        return {"price": 0, "terms": {}}
-
-    async def evaluate_counter_offer(self):
-        """Evaluate a counter-offer from the seller agent."""
-        pass
-
-    async def finalize_deal(self):
-        """Accept final terms and initiate payment flow."""
-        pass
-
-    async def request_quote(
-        self, buyer_id: str, resource_type: str, duration_hours: int
-    ) -> int:
-        """Request a quote for compute resources.
+    def __init__(self, max_wtp: float, urgency: float = 0.5):
+        """
+        Initialize buyer agent.
 
         Args:
-            buyer_id: Unique identifier for the buyer
-            resource_type: Type of compute resource (e.g. "GPU")
-            duration_hours: Number of hours to rent the resource
+            max_wtp: Maximum willingness to pay
+            urgency: How urgent the need is (0-1), affects negotiation strategy
+        """
+        self.max_wtp = max_wtp
+        self.urgency = urgency
+        self.llm = get_llm()
+
+    async def respond(self, quote: dict) -> str:
+        """
+        Generate response to seller's quote.
+
+        Args:
+            quote: Dictionary containing quote details including price
 
         Returns:
-            quote_id: ID of the created quote
+            Response string ('accept' or counter-offer price)
         """
-        async with httpx.AsyncClient(base_url="http://localhost:8000") as client:
-            response = await client.post(
-                "/api/quote-request",
-                json={
-                    "buyer_id": buyer_id,
-                    "resource_type": resource_type,
-                    "duration_hours": duration_hours,
-                },
-            )
-            response.raise_for_status()
-            return response.json()["quote_id"]
+        prompt = (
+            "You are a buyer. If seller price is <= {max}, reply 'accept'. "
+            "Otherwise reply with a lower numeric counter offer. "
+            "Never explain."
+        ).format(max=self.max_wtp)
+
+        msg = json.dumps({"seller_price": quote["price"]})
+
+        response = await self.llm.ainvoke(
+            [{"role": "system", "content": prompt}, {"role": "user", "content": msg}]
+        )
+
+        return response.content.strip()
+
+    async def make_offer(self) -> dict:
+        """
+        Generate initial offer based on maximum willingness to pay.
+
+        Returns:
+            dict: Initial offer with price
+        """
+        # Start with a price below max_wtp based on urgency
+        initial_price = self.max_wtp * (
+            0.7 + (0.2 * self.urgency)
+        )  # Between 70-90% of max_wtp
+        return {"price": round(initial_price, 2)}

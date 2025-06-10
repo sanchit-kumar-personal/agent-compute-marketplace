@@ -2,7 +2,6 @@ import json
 import logging
 from pathlib import Path
 from core.llm import get_llm
-from langchain_core.messages import HumanMessage, SystemMessage
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -27,37 +26,48 @@ class SellerAgent:
             quote: Quote details including resource_type and duration_hours
 
         Returns:
-            float: Calculated price for the quote
-
-        Note:
-            Will attempt to use LLM for dynamic pricing, but falls back to
-            deterministic pricing if LLM fails or returns invalid response.
+            float: Calculated total price for the quote duration
         """
         try:
             llm = get_llm()
             system_msg = SYSTEM_PROMPT.read_text()
-            user_msg = json.dumps(
-                {
-                    "resource_type": quote["resource_type"],
-                    "duration_hours": quote["duration_hours"],
-                }
-            )
+
+            # Only include relevant fields for pricing
+            quote_data = {
+                "resource_type": quote["resource_type"],
+                "duration_hours": quote["duration_hours"],
+            }
+            if "counter_price" in quote:
+                quote_data["counter_price"] = quote["counter_price"]
+
+            user_msg = json.dumps(quote_data)
 
             response = await llm.ainvoke(
                 [
-                    SystemMessage(content=system_msg),
-                    HumanMessage(content=user_msg),
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
                 ]
             )
-            price = float(response.content.strip())
-            if price <= 0:
-                raise ValueError("LLM returned non-positive price")
-            return price
+
+            try:
+                price = float(response.content)
+                logger.info(f"LLM generated price: {price}")
+                return price
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Invalid LLM response, falling back to deterministic pricing"
+                )
+                pass
 
         except Exception as e:
             logger.warning(
-                f"Failed to generate price with LLM: {e}. Using fallback pricing."
+                f"LLM error: {str(e)}, falling back to deterministic pricing"
             )
-            # Fallback to deterministic pricing
-            base_price = BASE_PRICES.get(quote["resource_type"].upper(), 1.0)
-            return base_price * quote["duration_hours"]
+
+        # Fallback to deterministic pricing
+        base_price = BASE_PRICES.get(quote["resource_type"].upper(), 1.0)
+        total_price = base_price * quote["duration_hours"]
+        logger.info(
+            f"Using base pricing: {base_price} * {quote['duration_hours']} = {total_price}"
+        )
+        return total_price

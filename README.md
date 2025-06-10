@@ -112,3 +112,63 @@ Once running, visit:
 
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+
+## Database Setup and Migrations
+
+### Initial Setup
+
+1. Create a PostgreSQL database:
+
+```bash
+createdb agent_compute_marketplace
+```
+
+2. Set up your database URL in the environment:
+
+```bash
+export DATABASE_URL=postgresql://username:password@localhost/agent_compute_marketplace
+```
+
+3. Run all migrations:
+
+```bash
+alembic upgrade head
+```
+
+### Working with Migrations
+
+When making database schema changes:
+
+1. Create a new migration:
+
+```bash
+alembic revision --autogenerate -m "description of changes"
+```
+
+2. Review the generated migration in `alembic/versions/`
+
+3. Apply the migration:
+
+```bash
+alembic upgrade head
+```
+
+4. To rollback a migration:
+
+```bash
+alembic downgrade -1
+```
+
+### Environment-specific Configuration
+
+- Local development: Use `DATABASE_URL` environment variable
+- Staging/Production: Set `DATABASE_URL` in your deployment environment
+- Testing: Uses `test_agent_marketplace` database by default
+
+### Troubleshooting
+
+If you encounter issues with enum types in PostgreSQL:
+
+1. Check current enum values: `\dT+ enum_name`
+2. Verify table structure: `\d table_name`
+3. Make sure all migrations have been applied: `alembic current`
