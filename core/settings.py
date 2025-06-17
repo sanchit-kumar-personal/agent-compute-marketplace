@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     MCP_POSTGRES_PASSWORD: str = ""
 
     # Payment providers
-    STRIPE_KEY: str
+    STRIPE_API_KEY: str
+    STRIPE_WEBHOOK_SECRET: str
     PAYPAL_CLIENT_ID: str
     PAYPAL_SECRET: str
 

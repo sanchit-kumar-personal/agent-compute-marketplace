@@ -1,28 +1,29 @@
-alembic>=1.13.1
-fastapi>=0.109.0
-httpx==0.27.0
-langchain-openai>=0.3.21
-langchain-core>=0.3.64
-openai>=1.14.0
-paypalrestsdk>=1.13.1
-pydantic>=2.5.3
-pydantic-settings>=2.1.0
-python-dotenv>=1.0.0
-python-multipart>=0.0.6
-sqlalchemy>=2.0.25
-sqlmodel>=0.0.14
-stripe>=7.11.0
-uvicorn>=0.27.0
-web3>=6.11.1
+alembic
+fastapi
+httpx
+langchain-openai
+langchain-core
+openai
+paypalrestsdk
+pydantic
+pydantic-settings
+python-dotenv
+python-multipart
+sqlalchemy
+sqlmodel
+stripe
+uvicorn
+web3
 
 # Database drivers
-asyncpg>=0.29.0
-psycopg2-binary>=2.9.7
+asyncpg
+psycopg2-binary
 
 # Development dependencies
-black>=24.1.1
-pytest>=8.0.0
-pytest-asyncio>=0.23.5
-pytest-cov>=4.1.0
-pytest-postgresql>=6.0.0
-ruff>=0.1.14
+black
+pytest
+pytest-asyncio
+pytest-cov
+pytest-postgresql
+ruff
+mako

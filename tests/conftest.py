@@ -122,7 +122,8 @@ def setup_test_environment():
     os.environ.update(
         {
             "DATABASE_URL": "sqlite:///:memory:",  # Use in-memory for faster tests
-            "STRIPE_KEY": "sk_test_dummy",
+            "STRIPE_API_KEY": "sk_test_dummy",
+            "STRIPE_WEBHOOK_SECRET": "whsec_test_dummy",
             "PAYPAL_CLIENT_ID": "test_client_id",
             "PAYPAL_SECRET": "test_secret",
             "OPENAI_API_KEY": "sk-test-dummy",
@@ -143,7 +144,8 @@ def setup_test_environment():
 def mock_settings():
     return Settings(
         DATABASE_URL="sqlite:///:memory:",
-        STRIPE_KEY="sk_test_mock",
+        STRIPE_API_KEY="sk_test_mock",
+        STRIPE_WEBHOOK_SECRET="whsec_test_mock",
         PAYPAL_CLIENT_ID="test_client_id",
         PAYPAL_SECRET="test_secret",
         OPENAI_API_KEY="sk-test-mock",
@@ -156,20 +158,21 @@ def mock_settings():
 @pytest.fixture
 def postgres_test_settings():
     """Settings for PostgreSQL integration tests."""
+    db_url = os.environ.get(
+        "TEST_DATABASE_URL",
+        os.environ.get(
+            "DATABASE_URL", "postgresql://sanchitkumar@localhost:5432/agent_marketplace"
+        ),
+    )
     return Settings(
-        DATABASE_URL="postgresql://sanchitkumar@localhost:5432/test_agent_marketplace",
-        STRIPE_KEY="sk_test_mock",
+        DATABASE_URL=db_url,
+        STRIPE_API_KEY="sk_test_mock",
         PAYPAL_CLIENT_ID="test_client_id",
         PAYPAL_SECRET="test_secret",
         OPENAI_API_KEY="sk-test-mock",
         APP_NAME="Test Marketplace",
         DEBUG=True,
         ENVIRONMENT="development",
-        MCP_POSTGRES_HOST="localhost",
-        MCP_POSTGRES_PORT=5432,
-        MCP_POSTGRES_DB="test_agent_marketplace",
-        MCP_POSTGRES_USER="sanchitkumar",
-        MCP_POSTGRES_PASSWORD="",
     )
 
 
@@ -247,18 +250,17 @@ def postgres_client(postgres_test_settings):
     """Client for PostgreSQL integration tests."""
     from db.session import get_db, get_engine, reset_engines
 
-    # Reset any existing engines to ensure clean state
+    # Reset engines to ensure clean state
     reset_engines()
 
-    # Initialize the database with tables for PostgreSQL tests
-    try:
-        # Create engine and initialize tables
-        engine = get_engine(postgres_test_settings)
-        Base.metadata.create_all(engine)
-    except Exception as e:
-        pytest.skip(f"PostgreSQL database not available: {e}")
+    # Get PostgreSQL engine
+    engine = get_engine(postgres_test_settings)
 
-    # Create a session factory bound to the test engine
+    # Create all tables
+    Base.metadata.drop_all(engine)  # Drop existing tables
+    Base.metadata.create_all(engine)  # Create fresh tables
+
+    # Create session factory
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     def override_get_db():
@@ -281,7 +283,20 @@ def postgres_client(postgres_test_settings):
 
     # Clean up
     app.dependency_overrides.clear()
-    reset_engines()  # Clean up after test
+    reset_engines()
+    Base.metadata.drop_all(engine)  # Clean up tables
+
+
+@pytest.fixture(autouse=True)
+def mock_stripe_setup():
+    """Mock Stripe API for all tests."""
+    with patch("stripe.api_key", "sk_test_mock"), patch(
+        "stripe.PaymentIntent.create"
+    ) as mock_create:
+        mock_create.return_value = type(
+            "PaymentIntent", (), {"id": "pi_mock", "status": "requires_payment_method"}
+        )()
+        yield mock_create
 
 
 # Pytest markers for different test types

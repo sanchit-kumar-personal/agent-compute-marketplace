@@ -15,8 +15,8 @@ from negotiation.engine import NegotiationEngine
 from agents.buyer import BuyerAgent
 from agents.seller import SellerAgent
 from db.models import Quote, QuoteStatus
-import json
 from datetime import datetime, UTC
+from langchain_core.messages import AIMessage
 
 
 @pytest.fixture
@@ -60,18 +60,17 @@ class MockLLM:
 
     def __init__(self, responses):
         self.responses = responses
-        self.current = 0
+        self.index = 0
 
-    async def ainvoke(self, messages):
-        response = self.responses[self.current]
-        self.current += 1
-        return type("Response", (), {"content": response})()
+    async def ainvoke(self, messages, *args, **kwargs):
+        response = self.responses[self.index]
+        self.index += 1
+        return AIMessage(content=response)
 
-    # Keep old method for backward compatibility
-    async def apredict(self, system=None, messages=None):
-        response = self.responses[self.current]
-        self.current += 1
-        return response
+    async def __call__(self, messages, *args, **kwargs):
+        response = self.responses[self.index]
+        self.index += 1
+        return AIMessage(content=response)
 
 
 @pytest.mark.asyncio
@@ -104,30 +103,38 @@ async def test_multi_turn_negotiation_accepted(mock_quote, test_db_session):
         assert quote.price == 4.5
 
         # Verify negotiation log
-        log = json.loads(quote.negotiation_log)
+        log = quote.negotiation_log  # Already a list, no need for json.loads()
         assert len(log) == 4
 
         # Check sequence
-        assert log[0]["role"] == "seller" and log[0]["price"] == 5.0
+        assert log[0]["role"] == "seller" and float(log[0]["price"]) == 5.0
         assert log[1]["role"] == "buyer" and log[1]["response"] == "4.0"
-        assert log[2]["role"] == "seller" and log[2]["price"] == 4.5
+        assert log[2]["role"] == "seller" and float(log[2]["price"]) == 4.5
         assert log[3]["role"] == "buyer" and log[3]["response"] == "accept"
 
 
 @pytest.mark.asyncio
-async def test_auto_negotiate_endpoint(client, mock_quote):
+async def test_auto_negotiate_endpoint(client, mock_quote, test_db_session):
     """Test the auto-negotiation endpoint behavior."""
 
-    # First call should succeed
-    resp1 = client.post(f"/api/quote/{mock_quote.id}/negotiate/auto")
-    assert resp1.status_code == 200
-    data = resp1.json()
-    assert data["status"] in ("accepted", "rejected", "countered")
+    # First call should succeed and create payment
+    with patch("stripe.PaymentIntent.create") as mock_create:
+        mock_create.return_value.id = "pi_mock"
+        resp1 = client.post(f"/quotes/{mock_quote.id}/negotiate/auto")
+        assert resp1.status_code == 200
+        data = resp1.json()
+        assert data["status"] == "accepted"
+        assert "transaction_id" in data
 
-    # Second call should return 409
-    resp2 = client.post(f"/api/quote/{mock_quote.id}/negotiate/auto")
+    # Second call should fail since quote is no longer pending
+    resp2 = client.post(f"/quotes/{mock_quote.id}/negotiate/auto")
     assert resp2.status_code == 409
-    assert "Quote is not in priced status" in resp2.json()["detail"]
+    assert "not in pending status" in resp2.json()["detail"]
+
+    # Verify quote state - refresh from DB first
+    test_db_session.refresh(mock_quote)
+    assert mock_quote.status == QuoteStatus.accepted
+    assert mock_quote.price == 100.0  # Mock price
 
 
 @pytest.mark.asyncio
@@ -155,14 +162,14 @@ def test_negotiate_quote_flow(client):
     """Test the full quote negotiation flow from creation to pricing."""
     # Create quote first
     resp = client.post(
-        "/api/quote-request",
+        "/quotes/request",
         json={"buyer_id": "alice", "resource_type": "GPU", "duration_hours": 4},
     )
     assert resp.status_code == 201
     quote_id = resp.json()["quote_id"]
 
     # Negotiate
-    nego = client.post(f"/api/quote/{quote_id}/negotiate")
+    nego = client.post(f"/quotes/{quote_id}/negotiate")
     assert nego.status_code == 200
     data = nego.json()
     assert data["status"] == "priced"
@@ -174,6 +181,6 @@ def test_negotiate_quote_flow(client):
     assert log[0]["role"] == "seller"
 
     # Try negotiating again - should fail with 409
-    nego2 = client.post(f"/api/quote/{quote_id}/negotiate")
+    nego2 = client.post(f"/quotes/{quote_id}/negotiate")
     assert nego2.status_code == 409
     assert "not in pending status" in nego2.json()["detail"]

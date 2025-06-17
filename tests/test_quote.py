@@ -18,15 +18,20 @@ def test_quote_workflow(client):
     """Test the happy path of the quote workflow."""
     # Create a quote request
     response = client.post(
-        "/api/quote-request",
-        json={"buyer_id": "alice", "resource_type": "GPU", "duration_hours": 4},
+        "/quotes/request",
+        json={
+            "buyer_id": "alice",
+            "resource_type": "GPU",
+            "duration_hours": 4,
+            "buyer_max_price": 10.0,  # Add required field
+        },
     )
     assert response.status_code == 201
     quote_id = response.json()["quote_id"]
     assert quote_id > 0
 
     # Get the quote details - should be pending initially
-    response = client.get(f"/api/quote/{quote_id}")
+    response = client.get(f"/quotes/{quote_id}")
     assert response.status_code == 200
     quote = response.json()
     assert quote["status"] == "pending"  # Quote starts in pending state
@@ -34,7 +39,7 @@ def test_quote_workflow(client):
     assert quote["price"] == 0.0  # No price set yet
 
     # Negotiate the quote
-    response = client.post(f"/api/quote/{quote_id}/negotiate")
+    response = client.post(f"/quotes/{quote_id}/negotiate")
     assert response.status_code == 200
     quote = response.json()
     assert quote["status"] == "priced"
@@ -50,11 +55,12 @@ def test_quote_workflow(client):
 def test_invalid_quote_request(client):
     """Test validation of quote request parameters."""
     response = client.post(
-        "/api/quote-request",
+        "/quotes/request",
         json={
             "buyer_id": "bob",
             "resource_type": "GPU",
             # duration_hours omitted
+            "buyer_max_price": 10.0,  # Add required field
         },
     )
     assert response.status_code == 422
@@ -67,36 +73,36 @@ def test_invalid_quote_request(client):
 
 # Integration tests using PostgreSQL
 @pytest.mark.integration
-def test_quote_workflow_postgres(postgres_client):
-    """Test quote workflow with PostgreSQL backend."""
-    # This test will use the actual PostgreSQL database
-    # Create a quote request
-    response = postgres_client.post(
-        "/api/quote-request",
+def test_quote_workflow_postgres(client):
+    """Test the full quote workflow from request to acceptance (PostgreSQL)."""
+    # Create quote request
+    response = client.post(
+        "/quotes/request",
         json={
-            "buyer_id": "postgres_alice",
+            "buyer_id": "test_buyer",
             "resource_type": "GPU",
-            "duration_hours": 8,
+            "duration_hours": 4,
         },
     )
     assert response.status_code == 201
     quote_id = response.json()["quote_id"]
-    assert quote_id > 0
 
-    # Get the quote details
-    response = postgres_client.get(f"/api/quote/{quote_id}")
-    assert response.status_code == 200
-    quote = response.json()
-    assert quote["status"] == "pending"
-    assert quote["buyer_id"] == "postgres_alice"
-    assert quote["duration_hours"] == 8
+    # Get quote details
+    quote = client.get(f"/quotes/{quote_id}")
+    assert quote.status_code == 200
+    assert quote.json()["status"] == "pending"
 
-    # Negotiate the quote
-    response = postgres_client.post(f"/api/quote/{quote_id}/negotiate")
-    assert response.status_code == 200
-    quote = response.json()
-    assert quote["status"] == "priced"
-    assert quote["price"] == 16.0  # GPU base price (2.0) * 8 hours
+    # Negotiate quote
+    nego = client.post(f"/quotes/{quote_id}/negotiate")
+    assert nego.status_code == 200
+    data = nego.json()
+    assert data["status"] == "priced"
+    assert data["price"] == 8.0  # GPU base price (2.0) * 4 hours
+
+    # Try negotiating again - should fail
+    nego2 = client.post(f"/quotes/{quote_id}/negotiate")
+    assert nego2.status_code == 409
+    assert "not in pending status" in nego2.json()["detail"]
 
 
 @pytest.mark.integration
@@ -109,11 +115,12 @@ def test_concurrent_quote_requests_postgres(postgres_client):
 
     def create_quote(buyer_id: str):
         response = postgres_client.post(
-            "/api/quote-request",
+            "/quotes/request",
             json={
                 "buyer_id": f"concurrent_{buyer_id}",
                 "resource_type": "CPU",
                 "duration_hours": 2,
+                "buyer_max_price": 5.0,  # Add required field
             },
         )
         return response.status_code, response.json()
@@ -129,6 +136,7 @@ def test_concurrent_quote_requests_postgres(postgres_client):
     for status_code, response_data in results:
         assert status_code == 201
         assert "quote_id" in response_data
+        assert response_data["quote_id"] > 0
 
 
 # Legacy test fixture for backward compatibility

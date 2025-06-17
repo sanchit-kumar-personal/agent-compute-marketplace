@@ -9,11 +9,21 @@ This module defines SQLAlchemy ORM models for:
 - Audit logs
 """
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    ForeignKey,
+    Text,
+    Enum,
+    Numeric,
+    Index,
+)
+from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime, UTC
 from enum import Enum as PyEnum
-from sqlalchemy.ext.hybrid import hybrid_property
 from typing import List, Dict, Any
 import json
 
@@ -48,17 +58,35 @@ class Negotiation(Base):
     )
 
 
+class PaymentProvider(PyEnum):
+    stripe = "stripe"
+    paypal = "paypal"
+
+
+class TransactionStatus(PyEnum):
+    pending = "pending"
+    succeeded = "succeeded"
+    failed = "failed"
+
+
 class Transaction(Base):
-    """Model representing completed transactions."""
+    """Model representing payment transactions."""
 
     __tablename__ = "transactions"
+    __table_args__ = (Index("ix_transactions_quote_status", "quote_id", "status"),)
 
     id = Column(Integer, primary_key=True)
-    negotiation_id = Column(Integer, ForeignKey("negotiations.id"))
-    amount = Column(Float)
-    payment_method = Column(String(20))  # e.g., "stripe", "paypal", "crypto"
-    status = Column(String(20))  # e.g., "pending", "completed", "failed"
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    quote_id = Column(Integer, ForeignKey("quotes.id"), nullable=False)
+    provider = Column(Enum(PaymentProvider), nullable=False)
+    provider_id = Column(String(255), nullable=False)
+    amount_usd = Column(Numeric(10, 2), nullable=False)
+    status = Column(
+        Enum(TransactionStatus), nullable=False, default=TransactionStatus.pending
+    )
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    def __repr__(self):
+        return f"<Transaction(id={self.id}, quote_id={self.quote_id}, status={self.status})>"
 
 
 class QuoteStatus(PyEnum):
@@ -67,6 +95,7 @@ class QuoteStatus(PyEnum):
     accepted = "accepted"
     rejected = "rejected"
     countered = "countered"
+    paid = "paid"
 
 
 class Quote(Base):
@@ -77,33 +106,40 @@ class Quote(Base):
     resource_type = Column(String(50), nullable=False)
     duration_hours = Column(Integer, nullable=False)
     price = Column(Float, default=0.0)
-    buyer_max_price = Column(Float(10, 2), nullable=False, server_default="0.0")
+    buyer_max_price = Column(Float, nullable=False, default=0.0)
     status = Column(Enum(QuoteStatus), default=QuoteStatus.pending)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    _negotiation_log = Column(
-        "negotiation_log", Text, server_default="[]", nullable=False
-    )
+    _negotiation_log = Column("negotiation_log", Text, nullable=False, default="[]")
 
-    @hybrid_property
-    def negotiation_log(self) -> str:
-        """Get the negotiation log as a JSON string."""
-        return self._negotiation_log or "[]"
+    # Add relationship to transactions
+    transactions = relationship("Transaction", backref="quote", lazy="dynamic")
+
+    @property
+    def negotiation_log(self) -> List[Dict[str, Any]]:
+        """Get the negotiation log as a list of dictionaries."""
+        if not self._negotiation_log:
+            return []
+        try:
+            return json.loads(self._negotiation_log)
+        except (json.JSONDecodeError, TypeError):
+            return []
 
     @negotiation_log.setter
-    def negotiation_log(self, value: str | List[Dict[str, Any]]) -> None:
-        """Set the negotiation log from either a JSON string or list of dictionaries."""
+    def negotiation_log(self, value: List[Dict[str, Any]]) -> None:
+        """Set the negotiation log, converting to JSON string if needed."""
         if isinstance(value, str):
+            # Validate it's a valid JSON string
             try:
-                # Validate it's valid JSON
                 json.loads(value)
                 self._negotiation_log = value
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON string: {str(e)}")
+            except json.JSONDecodeError:
+                self._negotiation_log = "[]"
         else:
+            # Convert list to JSON string
             try:
                 self._negotiation_log = json.dumps(value)
-            except TypeError as e:
-                raise ValueError(f"Invalid negotiation log data: {str(e)}")
+            except (TypeError, ValueError):
+                self._negotiation_log = "[]"
 
     def __repr__(self):
         return f"<Quote(id={self.id}, status={self.status})>"

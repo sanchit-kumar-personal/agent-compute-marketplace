@@ -16,6 +16,8 @@ from core.dependencies import get_settings, init_settings, clear_settings
 from negotiation import router as negotiation_router
 from db.session import init_db, init_async_db
 from api import routes
+from api import webhooks
+from api.routes.quotes import router as quotes_router
 
 
 @asynccontextmanager
@@ -99,6 +101,8 @@ async def health_check(settings: Settings = Depends(get_settings)):
 # Include routers
 app.include_router(negotiation_router, prefix="/negotiation")
 app.include_router(routes.router, prefix="/api")
+app.include_router(webhooks.router, prefix="/api")
+app.include_router(quotes_router, tags=["quotes"])
 
 if __name__ == "__main__":
     import uvicorn

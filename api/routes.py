@@ -33,13 +33,52 @@ def get_seller_agent():
 @router.get("/resources", response_model=List[schemas.ComputeResource])
 async def list_resources():
     """List available compute resources."""
-    pass
+    # For now, return a static list of resources
+    return [
+        {
+            "id": 1,
+            "type": "GPU",
+            "name": "NVIDIA A100",
+            "description": "NVIDIA A100 GPU with 80GB memory",
+            "price_per_hour": 2.50,
+            "available": True,
+        },
+        {
+            "id": 2,
+            "type": "CPU",
+            "name": "AMD EPYC",
+            "description": "AMD EPYC 64-core CPU",
+            "price_per_hour": 1.00,
+            "available": True,
+        },
+    ]
 
 
 @router.get("/resources/{resource_id}", response_model=schemas.ComputeResource)
 async def get_resource(resource_id: int):
     """Get details of a specific compute resource."""
-    pass
+    resources = {
+        1: {
+            "id": 1,
+            "type": "GPU",
+            "name": "NVIDIA A100",
+            "description": "NVIDIA A100 GPU with 80GB memory",
+            "price_per_hour": 2.50,
+            "available": True,
+        },
+        2: {
+            "id": 2,
+            "type": "CPU",
+            "name": "AMD EPYC",
+            "description": "AMD EPYC 64-core CPU",
+            "price_per_hour": 1.00,
+            "available": True,
+        },
+    }
+
+    if resource_id not in resources:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    return resources[resource_id]
 
 
 # Negotiation routes

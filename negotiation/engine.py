@@ -10,7 +10,6 @@ to generate dynamic counter-offers and acceptance logic. Key responsibilities:
 - Generating context-aware responses
 """
 
-import json
 import datetime
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -88,12 +87,7 @@ class NegotiationEngine:
 
         try:
             # Initialize negotiation log
-            try:
-                log = json.loads(quote.negotiation_log)
-                if not isinstance(log, list):
-                    log = []
-            except json.JSONDecodeError:
-                log = []
+            log = quote.negotiation_log if quote.negotiation_log else []
 
             # Initial seller quote
             price = await self.seller.generate_quote(quote.__dict__)
@@ -117,20 +111,7 @@ class NegotiationEngine:
             raise RuntimeError(f"Negotiation failed: {str(e)}")
 
     async def negotiate(self, db: Session, quote_id: int, max_turns: int = 4) -> Quote:
-        """Run multi-turn quote negotiation between buyer and seller.
-
-        Args:
-            db: Database session
-            quote_id: ID of the quote to negotiate
-            max_turns: Maximum number of negotiation turns before rejecting
-
-        Returns:
-            Quote: Updated quote with final negotiated price and status
-
-        Raises:
-            ValueError: If quote not found or not in priced status
-            RuntimeError: If negotiation fails
-        """
+        """Run multi-turn quote negotiation between buyer and seller."""
         quote: Quote | None = db.get(Quote, quote_id)
         if not quote:
             raise ValueError(f"Quote {quote_id} not found")
@@ -143,12 +124,9 @@ class NegotiationEngine:
             buyer = BuyerAgent(max_wtp=quote.buyer_max_price)
 
             # Initialize negotiation log
-            try:
-                log = json.loads(quote.negotiation_log)
-                if not isinstance(log, list):
-                    log = []
-            except json.JSONDecodeError:
-                log = []
+            log = (
+                quote.negotiation_log
+            )  # This will return a list thanks to the property
 
             # Negotiation loop
             turns = 0
