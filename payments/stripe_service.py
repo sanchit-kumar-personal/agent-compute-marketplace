@@ -10,7 +10,13 @@ This module handles all Stripe-related payment operations including:
 import os
 import stripe
 from typing import Dict, Any, Optional, Union
-from db.models import Transaction, Quote, PaymentProvider
+from db.models import (
+    Transaction,
+    Quote,
+    PaymentProvider,
+    TransactionStatus,
+    QuoteStatus,
+)
 from sqlalchemy.orm import Session
 from core.settings import Settings
 from fastapi import Depends
@@ -90,7 +96,7 @@ class StripeService:
                 provider=PaymentProvider.stripe,
                 provider_id=intent.id,
                 amount_usd=quote.price,
-                status="pending",
+                status=TransactionStatus.pending,
             )
             self.db.add(transaction)
             self.db.commit()
@@ -147,11 +153,11 @@ class StripeService:
 
         if transaction:
             # Update transaction status
-            transaction.status = "succeeded"
+            transaction.status = TransactionStatus.succeeded
 
             # Update quote status to indicate payment
             quote = transaction.quote
-            quote.status = "paid"
+            quote.status = QuoteStatus.paid
 
             self.db.commit()
 
@@ -164,5 +170,7 @@ class StripeService:
         )
 
         if transaction:
-            transaction.status = "failed"
+            transaction.status = TransactionStatus.failed
+            quote = transaction.quote
+            quote.status = QuoteStatus.rejected
             self.db.commit()

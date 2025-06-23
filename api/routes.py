@@ -9,16 +9,23 @@ This module defines FastAPI routes for:
 - System health and metrics
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Dict, Any, Union
 from sqlalchemy.orm import Session
 from . import schemas
 from db.session import get_db
-from db.models import Quote, QuoteStatus
+from db.models import (
+    Quote,
+    QuoteStatus,
+    Transaction,
+    TransactionStatus,
+    PaymentProvider,
+)
 from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 from agents.seller import SellerAgent
 from negotiation.engine import NegotiationEngine
+from payments.paypal_service import PayPalService, PayPalError
 import json
 
 router = APIRouter()
@@ -122,6 +129,7 @@ class QuoteOut(BaseModel):
     status: str
     created_at: datetime
     negotiation_log: List[Dict[str, Any]]
+    transactions: List[Dict[str, Any]] = []  # Add transactions field
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -161,7 +169,30 @@ def get_quote(quote_id: int, db: Session = Depends(get_db)):
     quote = db.get(Quote, quote_id)
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
-    return quote
+
+    # Convert transactions to list for response
+    quote_dict = {
+        "id": quote.id,
+        "buyer_id": quote.buyer_id,
+        "resource_type": quote.resource_type,
+        "duration_hours": quote.duration_hours,
+        "price": quote.price,
+        "status": quote.status.value,
+        "created_at": quote.created_at,
+        "negotiation_log": quote.negotiation_log,
+        "transactions": [
+            {
+                "id": tx.id,
+                "provider": tx.provider.value,
+                "provider_id": tx.provider_id,
+                "amount_usd": float(tx.amount_usd),
+                "status": tx.status.value,
+                "created_at": tx.created_at,
+            }
+            for tx in quote.transactions
+        ],
+    }
+    return quote_dict
 
 
 @router.post("/quote/{quote_id}/negotiate", response_model=QuoteOut)
@@ -199,6 +230,7 @@ async def negotiate_quote(
 @router.post("/quote/{quote_id}/negotiate/auto", response_model=QuoteOut)
 async def auto_negotiate_quote(
     quote_id: int,
+    provider: str = Query("stripe", description="Payment provider (stripe or paypal)"),
     db: Session = Depends(get_db),
     seller: SellerAgent = Depends(get_seller_agent),
 ):
@@ -233,7 +265,48 @@ async def auto_negotiate_quote(
             detail="Quote is not in priced status",
         )
 
-    # Now start negotiation
+    # Set to accepted before payment
+    quote.status = QuoteStatus.accepted
+    db.commit()
+
+    # Handle PayPal payment if selected
+    if provider == "paypal":
+        try:
+            paypal = PayPalService()
+            capture_result = paypal.create_and_capture(quote.price, quote.id)
+
+            # Create transaction record
+            tx = Transaction(
+                quote_id=quote.id,
+                provider=PaymentProvider.paypal,
+                provider_id=capture_result["capture_id"],
+                amount_usd=quote.price,
+                status=PayPalService.map_status(capture_result["status"]),
+            )
+
+            # Handle payment status
+            if tx.status == TransactionStatus.succeeded:
+                quote.status = QuoteStatus.paid
+                db.add(tx)
+                db.commit()
+                return quote
+            else:
+                quote.status = QuoteStatus.rejected
+                db.add(tx)
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_PAYMENT_REQUIRED,
+                    detail="paypal capture declined",
+                )
+
+        except PayPalError:
+            quote.status = QuoteStatus.rejected
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_BAD_GATEWAY, detail="paypal unavailable"
+            )
+
+    # Now start negotiation for other providers
     try:
         updated = await engine.negotiate(db, quote_id)
         db.commit()

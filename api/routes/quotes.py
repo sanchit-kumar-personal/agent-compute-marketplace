@@ -17,6 +17,9 @@ from payments.stripe_service import StripeService, StripeError
 from datetime import datetime, UTC
 from core.settings import Settings
 from main import get_settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/quotes")
 
@@ -30,6 +33,7 @@ async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
         buyer_id=quote_data.buyer_id,
         resource_type=quote_data.resource_type,
         duration_hours=quote_data.duration_hours,
+        buyer_max_price=quote_data.buyer_max_price,
         status=QuoteStatus.pending,
         created_at=datetime.now(UTC),
         negotiation_log=[],
@@ -51,7 +55,30 @@ async def get_quote(quote_id: int, db: Session = Depends(get_db)):
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
-    return quote
+    # Convert to dict and include transactions
+    return {
+        "id": quote.id,
+        "buyer_id": quote.buyer_id,
+        "resource_type": quote.resource_type,
+        "duration_hours": quote.duration_hours,
+        "price": quote.price,
+        "buyer_max_price": quote.buyer_max_price,
+        "status": quote.status.value,
+        "created_at": quote.created_at,
+        "negotiation_log": quote.negotiation_log,
+        "transactions": [
+            {
+                "id": tx.id,
+                "quote_id": tx.quote_id,
+                "provider": tx.provider.value,
+                "provider_id": tx.provider_id,
+                "amount_usd": float(tx.amount_usd),
+                "status": tx.status.value,
+                "created_at": tx.created_at,
+            }
+            for tx in quote.transactions
+        ],
+    }
 
 
 @router.post("/{quote_id}/negotiate", response_model=QuoteOut)
@@ -87,8 +114,13 @@ async def negotiate_quote(quote_id: int, db: Session = Depends(get_db)):
     return quote
 
 
-@router.post("/{quote_id}/negotiate/auto")
-async def auto_negotiate(quote_id: int, db: Session = Depends(get_db)):
+@router.post("/{quote_id}/negotiate/auto", response_model=QuoteOut)
+async def auto_negotiate(
+    quote_id: int,
+    provider: str = "stripe",
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
     """
     Auto-negotiate a quote and create payment intent.
     Only works for pending quotes.
@@ -110,10 +142,64 @@ async def auto_negotiate(quote_id: int, db: Session = Depends(get_db)):
     db.add(quote)
     db.commit()
 
-    # Create payment after successful negotiation
-    payment = await create_payment(quote, db)
+    if provider == "paypal":
+        from payments.paypal_service import PayPalService, PayPalError
 
-    return {"status": quote.status, "transaction_id": payment.id}
+        try:
+            paypal = PayPalService()
+            capture_result = paypal.create_and_capture(quote.price, quote.id)
+
+            # Log PayPal capture result
+            logger.info(
+                "paypal capture %s %s",
+                capture_result["status"],
+                capture_result["capture_id"],
+            )
+
+            # Create transaction record
+            tx = Transaction(
+                quote_id=quote.id,
+                provider=PaymentProvider.paypal,
+                provider_id=capture_result["capture_id"],
+                amount_usd=quote.price,
+                status=PayPalService.map_status(capture_result["status"]),
+                created_at=datetime.now(UTC),
+            )
+            db.add(tx)
+
+            # Only update to paid if transaction succeeded
+            if tx.status == TransactionStatus.succeeded:
+                quote.status = QuoteStatus.paid
+            else:
+                # Mark as rejected and raise 402 for declined payments
+                quote.status = QuoteStatus.rejected
+                db.commit()
+                raise HTTPException(status_code=402, detail="paypal capture declined")
+
+            db.commit()
+            db.refresh(quote)  # Refresh to get the updated quote with transactions
+            return quote
+
+        except PayPalError:
+            # Keep as accepted if payment failed - allows retrying
+            db.commit()
+            raise HTTPException(status_code=502, detail="paypal unavailable")
+    else:
+        try:
+            # Create Stripe payment
+            payment = await create_payment(quote, db, settings)
+            if payment.status == TransactionStatus.succeeded:
+                quote.status = QuoteStatus.paid
+            else:
+                # Keep as accepted if payment failed - allows retrying
+                quote.status = QuoteStatus.accepted
+            db.commit()
+            db.refresh(quote)  # Refresh to get the updated quote with transactions
+            return quote
+        except StripeError:
+            # Keep as accepted if payment failed - allows retrying
+            db.commit()
+            raise HTTPException(status_code=502, detail="stripe unavailable")
 
 
 @router.post("/{quote_id}/payments")
@@ -146,28 +232,31 @@ async def create_quote_payment(quote_id: int, db: Session = Depends(get_db)):
 async def create_payment(
     quote: Quote, db: Session, settings: Settings = Depends(get_settings)
 ) -> Transaction:
-    """Helper function to create a payment transaction."""
+    """Helper function to create a payment transaction.
+
+    Creates a Stripe PaymentIntent and returns the transaction record created
+    by the StripeService. The transaction starts in pending status and will
+    be updated to succeeded/failed when Stripe sends the webhook notification.
+    """
     stripe_service = StripeService(db=db, settings=settings)
     try:
         payment_intent_data = await stripe_service.create_payment_intent(quote)
+        # Get the transaction that was created by StripeService
+        transaction = (
+            db.query(Transaction)
+            .filter_by(provider_id=payment_intent_data["payment_intent_id"])
+            .first()
+        )
+        if not transaction:
+            raise ValueError("Transaction not found after creating payment intent")
+        return transaction
     except StripeError as e:
-        quote.status = QuoteStatus.rejected
+        quote.status = QuoteStatus.accepted  # Keep as accepted to allow retry
         db.commit()
         raise HTTPException(status_code=402, detail=f"payment declined: {str(e)}")
     except Exception as e:
-        quote.status = QuoteStatus.rejected
+        quote.status = QuoteStatus.accepted  # Keep as accepted to allow retry
         db.commit()
         raise HTTPException(
             status_code=502, detail=f"payment service unavailable: {str(e)}"
         )
-    transaction = Transaction(
-        quote_id=quote.id,
-        provider=PaymentProvider.stripe,
-        provider_id=payment_intent_data["payment_intent_id"],
-        amount_usd=quote.price,
-        status=TransactionStatus.pending,
-        created_at=datetime.now(UTC),
-    )
-    db.add(transaction)
-    db.commit()
-    return transaction

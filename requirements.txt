@@ -27,3 +27,6 @@ pytest-cov
 pytest-postgresql
 ruff
 mako
+
+paypal-checkout-serversdk==1.0.3
+requests>=2.32  # PayPal auth helper

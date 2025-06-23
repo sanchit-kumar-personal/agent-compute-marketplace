@@ -117,24 +117,74 @@ async def test_multi_turn_negotiation_accepted(mock_quote, test_db_session):
 async def test_auto_negotiate_endpoint(client, mock_quote, test_db_session):
     """Test the auto-negotiation endpoint behavior."""
 
-    # First call should succeed and create payment
+    # First call should create payment intent and transaction
     with patch("stripe.PaymentIntent.create") as mock_create:
-        mock_create.return_value.id = "pi_mock"
+        mock_create.return_value = type(
+            "PaymentIntent",
+            (),
+            {
+                "id": "pi_mock",
+                "client_secret": "secret",
+                "status": "requires_payment_method",  # Initial Stripe status
+            },
+        )()
         resp1 = client.post(f"/quotes/{mock_quote.id}/negotiate/auto")
         assert resp1.status_code == 200
         data = resp1.json()
-        assert data["status"] == "accepted"
-        assert "transaction_id" in data
+        assert data["status"] == "accepted"  # Quote should be in accepted state
+        assert "transactions" in data
+
+        # Verify transaction starts as pending
+        transactions = data["transactions"]
+        assert len(transactions) == 1
+        tx = transactions[0]
+        assert tx["provider"] == "stripe"
+        assert tx["status"] == "pending"  # Transaction starts as pending
+        assert tx["provider_id"] == "pi_mock"
+
+    # Simulate webhook for successful payment
+    webhook_payload = {
+        "type": "payment_intent.succeeded",
+        "data": {"object": {"id": "pi_mock", "status": "succeeded"}},
+    }
+
+    # Mock Stripe webhook verification
+    mock_event = type(
+        "Event",
+        (),
+        {
+            "type": "payment_intent.succeeded",
+            "data": type(
+                "Data",
+                (),
+                {
+                    "object": type(
+                        "Object", (), {"id": "pi_mock", "status": "succeeded"}
+                    )
+                },
+            ),
+        },
+    )()
+
+    # Use the test client to call the webhook endpoint
+    with patch("stripe.Webhook.construct_event", return_value=mock_event):
+        webhook_response = client.post(
+            "/api/webhook/stripe",
+            json=webhook_payload,
+            headers={"stripe-signature": "test_sig"},
+        )
+        assert webhook_response.status_code == 200
+        assert webhook_response.json() == {"status": "success"}
+
+    # Verify final states after webhook
+    test_db_session.refresh(mock_quote)
+    assert mock_quote.status == QuoteStatus.paid
+    assert mock_quote.price == 100.0  # Mock price
 
     # Second call should fail since quote is no longer pending
     resp2 = client.post(f"/quotes/{mock_quote.id}/negotiate/auto")
     assert resp2.status_code == 409
     assert "not in pending status" in resp2.json()["detail"]
-
-    # Verify quote state - refresh from DB first
-    test_db_session.refresh(mock_quote)
-    assert mock_quote.status == QuoteStatus.accepted
-    assert mock_quote.price == 100.0  # Mock price
 
 
 @pytest.mark.asyncio

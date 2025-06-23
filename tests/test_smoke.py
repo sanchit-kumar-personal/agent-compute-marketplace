@@ -4,7 +4,7 @@ Smoke tests for basic application functionality.
 
 from unittest.mock import patch
 from payments.stripe_service import StripeService
-from payments.paypal_client import PayPalClient
+from payments.paypal_service import PayPalService
 from core.settings import Settings
 
 
@@ -36,12 +36,13 @@ def test_health_check(client):
 
 
 @patch("stripe.Account.retrieve")
-@patch("paypalrestsdk.Payment.all")
-def test_payment_clients(mock_paypal, mock_stripe, mock_settings, test_db_session):
+@patch("requests.post")
+def test_payment_clients(mock_paypal_post, mock_stripe, mock_settings, test_db_session):
     """Test payment client connections with mocked API calls."""
     # Configure mocks
     mock_stripe.return_value = {"id": "acct_test"}
-    mock_paypal.return_value = [{"id": "PAY-test"}]
+    mock_paypal_post.return_value.json.return_value = {"access_token": "test_token"}
+    mock_paypal_post.return_value.raise_for_status.return_value = None
 
     # Create mock settings
     settings = Settings(STRIPE_API_KEY="test_key")
@@ -51,5 +52,6 @@ def test_payment_clients(mock_paypal, mock_stripe, mock_settings, test_db_sessio
     assert stripe_service.test_connection() is True
 
     # Test PayPal
-    paypal_client = PayPalClient(settings=mock_settings)
-    assert paypal_client.test_connection() is True
+    paypal_service = PayPalService()
+    token = paypal_service._token()
+    assert token == "test_token"

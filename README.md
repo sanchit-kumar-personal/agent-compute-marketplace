@@ -100,8 +100,9 @@ Required environment variables in `.env`:
 
 - `DATABASE_URL`: Database connection string
 - `STRIPE_KEY`: Stripe API key
-- `PAYPAL_CLIENT_ID`: PayPal client ID
-- `PAYPAL_SECRET`: PayPal secret key
+- `PAYPAL_BASE`: PayPal API base URL (defaults to sandbox URL)
+- `PAYPAL_CLIENT_ID`: PayPal client ID from sandbox developer dashboard
+- `PAYPAL_SECRET`: PayPal secret key from sandbox developer dashboard
 - `OPENAI_API_KEY`: OpenAI API key
 
 **Database Strategy**: SQLite remains valid for quick hacking; set `DATABASE_URL` to switch.
