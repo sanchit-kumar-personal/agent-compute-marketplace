@@ -4,6 +4,7 @@ httpx
 langchain-openai
 langchain-core
 openai
+pandas>=2.2
 paypalrestsdk
 pydantic
 pydantic-settings
@@ -11,6 +12,7 @@ python-dotenv
 python-multipart
 sqlalchemy
 sqlmodel
+streamlit==1.35.0
 stripe
 uvicorn
 web3
