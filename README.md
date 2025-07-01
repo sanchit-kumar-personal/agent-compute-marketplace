@@ -87,6 +87,15 @@ alembic upgrade head
 uvicorn main:app --reload
 ```
 
+6. Start the Streamlit dashboard:
+
+```bash
+cd dashboard
+streamlit run streamlit_app.py
+```
+
+The dashboard will be available at http://localhost:8501
+
 ## Development
 
 - Run tests: `pytest`

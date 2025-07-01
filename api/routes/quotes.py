@@ -16,12 +16,13 @@ from api.schemas import QuoteCreate, QuoteOut
 from payments.stripe_service import StripeService, StripeError
 from datetime import datetime, UTC
 from core.settings import Settings
-from main import get_settings
+from core.dependencies import get_settings
 import logging
+from typing import List
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/quotes")
+router = APIRouter()
 
 
 @router.post("/request", status_code=201)
@@ -44,6 +45,46 @@ async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
     db.refresh(quote)
 
     return {"quote_id": quote.id}
+
+
+@router.get("/recent", response_model=List[QuoteOut])
+async def recent_quotes(limit: int = 20, db: Session = Depends(get_db)):
+    """Get recent quotes ordered by creation date."""
+    quotes = db.query(Quote).order_by(Quote.created_at.desc()).limit(limit).all()
+
+    # Convert to QuoteOut models which will handle enum serialization
+    return [
+        QuoteOut(
+            id=q.id,
+            buyer_id=q.buyer_id,
+            resource_type=q.resource_type,
+            duration_hours=q.duration_hours,
+            price=float(q.price) if q.price is not None else 0.0,
+            buyer_max_price=(
+                float(q.buyer_max_price) if q.buyer_max_price is not None else 0.0
+            ),
+            status=q.status,  # This is already a QuoteStatus enum
+            created_at=q.created_at,
+            negotiation_log=q.negotiation_log,
+            transactions=(
+                [
+                    {
+                        "id": tx.id,
+                        "quote_id": tx.quote_id,
+                        "provider": tx.provider,  # This is already a PaymentProvider enum
+                        "provider_id": tx.provider_id,
+                        "amount_usd": float(tx.amount_usd),
+                        "status": tx.status,  # This is already a TransactionStatus enum
+                        "created_at": tx.created_at,
+                    }
+                    for tx in q.transactions
+                ]
+                if q.transactions
+                else None
+            ),
+        )
+        for q in quotes
+    ]
 
 
 @router.get("/{quote_id}")

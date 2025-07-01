@@ -102,7 +102,7 @@ async def health_check(settings: Settings = Depends(get_settings)):
 app.include_router(negotiation_router, prefix="/negotiation")
 app.include_router(routes.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
-app.include_router(quotes_router, tags=["quotes"])
+app.include_router(quotes_router, prefix="/quotes", tags=["quotes"])
 
 if __name__ == "__main__":
     import uvicorn
