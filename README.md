@@ -2,6 +2,8 @@
 
 An AI-powered sandbox where autonomous agents negotiate cloud compute (GPUs, CPUs) and settle transactions using real-world payment rails (Stripe, PayPal, crypto). The project demonstrates agent-to-agent markets, AI-driven negotiation, secure payments, and audit-grade logging—ideal proof-of-work for infra / AI / fintech recruiters.
 
+![dashboard](docs/dashboard.png)
+
 ---
 
 ## ⚙️ Key Features
@@ -182,3 +184,12 @@ If you encounter issues with enum types in PostgreSQL:
 1. Check current enum values: `\dT+ enum_name`
 2. Verify table structure: `\d table_name`
 3. Make sure all migrations have been applied: `alembic current`
+
+## Dashboard Features
+
+The Streamlit dashboard provides real-time monitoring of agent negotiations:
+
+- **Auto-refresh**: Toggle 5-second auto-refresh in the sidebar
+- **Quote History**: Adjust the number of visible quotes using the rows slider
+- **Negotiation Replay**: Click any quote row and use "Replay negotiation" to watch the turn-by-turn negotiation process
+- **Price Trends**: View historical price trends for all quotes
