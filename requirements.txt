@@ -3,6 +3,7 @@ fastapi
 httpx
 langchain-openai
 langchain-core
+matplotlib
 openai
 pandas>=2.2
 paypalrestsdk
@@ -12,7 +13,7 @@ python-dotenv
 python-multipart
 sqlalchemy
 sqlmodel
-streamlit==1.35.0
+streamlit==1.46.1
 stripe
 uvicorn
 web3
