@@ -193,3 +193,27 @@ The Streamlit dashboard provides real-time monitoring of agent negotiations:
 - **Quote History**: Adjust the number of visible quotes using the rows slider
 - **Negotiation Replay**: Click any quote row and use "Replay negotiation" to watch the turn-by-turn negotiation process
 - **Price Trends**: View historical price trends for all quotes
+
+## Tracing
+
+The application uses OpenTelemetry with Jaeger for distributed tracing. To use tracing:
+
+1. Start the Jaeger container:
+
+```bash
+docker compose -f docker-compose.tracing.yml up -d
+```
+
+2. Run the application normally. All FastAPI endpoints will be automatically traced.
+
+3. View traces in the Jaeger UI:
+
+- Open http://localhost:16686
+- Select "agentcloud" from the Service dropdown
+- Click "Find Traces" to view request traces
+
+The traces will show:
+
+- HTTP request paths and methods
+- Request/response timing
+- Dependencies and relationships between services

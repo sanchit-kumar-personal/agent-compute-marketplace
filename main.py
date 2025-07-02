@@ -13,11 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.settings import Settings
 from core.dependencies import get_settings, init_settings, clear_settings
+from core.tracing import init_tracer
 from negotiation import router as negotiation_router
 from db.session import init_db, init_async_db
 from api import routes
 from api import webhooks
 from api.routes.quotes import router as quotes_router
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 
 @asynccontextmanager
@@ -26,6 +28,9 @@ async def lifespan(app: FastAPI):
     # Startup
     init_settings()
     settings = get_settings()
+
+    # Initialize OpenTelemetry tracing
+    init_tracer()
 
     # Initialize database (try async first, fallback to sync)
     try:
@@ -49,6 +54,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Initialize FastAPI instrumentation
+FastAPIInstrumentor.instrument_app(app)
 
 # Add CORS middleware
 app.add_middleware(

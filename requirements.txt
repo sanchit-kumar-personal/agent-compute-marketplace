@@ -33,3 +33,9 @@ mako
 
 paypal-checkout-serversdk==1.0.3
 requests>=2.32  # PayPal auth helper
+
+# OpenTelemetry dependencies
+deprecated>=1.2.14
+opentelemetry-sdk>=1.25.0
+opentelemetry-instrumentation-fastapi>=0.44b0
+opentelemetry-exporter-otlp>=1.25.0
