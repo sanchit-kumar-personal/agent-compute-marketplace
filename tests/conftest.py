@@ -128,7 +128,7 @@ def setup_test_environment():
             "PAYPAL_SECRET": "test_secret",
             "OPENAI_API_KEY": "sk-test-dummy",
             "APP_NAME": "Test Marketplace",
-            "ENVIRONMENT": "development",
+            "ENVIRONMENT": "development",  # Use development environment for tests
             "DEBUG": "true",
         }
     )

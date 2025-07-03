@@ -34,7 +34,6 @@ def get_engine(settings: Settings = Depends(get_settings)):
         if settings.DATABASE_URL.startswith("postgresql"):
             _engine = create_engine(
                 settings.DATABASE_URL,
-                echo=settings.DEBUG,
                 future=True,
                 poolclass=QueuePool,
                 pool_size=settings.DATABASE_POOL_SIZE,
@@ -54,7 +53,6 @@ def get_engine(settings: Settings = Depends(get_settings)):
             )
             _engine = create_engine(
                 settings.DATABASE_URL,
-                echo=settings.DEBUG,
                 future=True,
                 connect_args=connect_args,
                 poolclass=(
@@ -74,7 +72,6 @@ def get_async_engine(settings: Settings = Depends(get_settings)):
         )
         _async_engine = create_async_engine(
             async_url,
-            echo=settings.DEBUG,
             future=True,
             pool_size=settings.DATABASE_POOL_SIZE,
             max_overflow=settings.DATABASE_MAX_OVERFLOW,

@@ -20,6 +20,8 @@ from api import routes
 from api import webhooks
 from api.routes.quotes import router as quotes_router
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from core.logging import configure_logging
+from api.middleware import log_api_entry
 
 
 @asynccontextmanager
@@ -57,6 +59,9 @@ app = FastAPI(
 
 # Initialize FastAPI instrumentation
 FastAPIInstrumentor.instrument_app(app)
+
+# Add logging middleware first
+app.middleware("http")(log_api_entry)
 
 # Add CORS middleware
 app.add_middleware(
@@ -112,7 +117,10 @@ app.include_router(routes.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
 app.include_router(quotes_router, prefix="/quotes", tags=["quotes"])
 
-if __name__ == "__main__":
-    import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def main():
+    configure_logging()
+    if __name__ == "__main__":
+        import uvicorn
+
+        uvicorn.run(app, host="0.0.0.0", port=8000)

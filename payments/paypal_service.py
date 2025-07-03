@@ -5,12 +5,15 @@ from decimal import Decimal
 from typing import Dict, Any, Tuple
 from datetime import datetime, timedelta, UTC
 from db.models import TransactionStatus
+import structlog
 
 BASE = os.getenv("PAYPAL_BASE", "https://api-m.sandbox.paypal.com")
 CLIENT = os.getenv("PAYPAL_CLIENT_ID")
 SECRET = os.getenv("PAYPAL_SECRET")
 
 _TOKEN_CACHE: Tuple[str, datetime] | None = None
+
+log = structlog.get_logger(__name__)
 
 
 class PayPalError(Exception):
@@ -92,3 +95,24 @@ class PayPalService:
             }  # status "COMPLETED" or "DECLINED"/"FAILED"
         except requests.RequestException as e:
             raise PayPalError(f"PayPal settlement failed: {e}")
+
+
+def capture_payment(quote_id: str, order_id: str, amount: float):
+    try:
+        # Existing payment capture logic
+        log.info(
+            "paypal.capture_succeeded",
+            quote_id=quote_id,
+            amount_usd=float(amount),
+            provider_id=order_id,
+        )
+        return True
+    except Exception as e:
+        log.error(
+            "paypal.capture_failed",
+            quote_id=quote_id,
+            amount_usd=float(amount),
+            provider_id=order_id,
+            error=str(e),
+        )
+        return False

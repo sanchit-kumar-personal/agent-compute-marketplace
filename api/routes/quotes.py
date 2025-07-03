@@ -19,8 +19,11 @@ from core.settings import Settings
 from core.dependencies import get_settings
 import logging
 from typing import List
+import structlog
+from core.logging import BusinessEvents
 
 logger = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 router = APIRouter()
 
@@ -43,6 +46,15 @@ async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
     db.add(quote)
     db.commit()
     db.refresh(quote)
+
+    log.info(
+        BusinessEvents.QUOTE_CREATED,
+        quote_id=quote.id,
+        buyer_id=quote.buyer_id,
+        resource_type=quote.resource_type,
+        duration_hours=quote.duration_hours,
+        buyer_max_price=quote.buyer_max_price,
+    )
 
     return {"quote_id": quote.id}
 
@@ -152,6 +164,21 @@ async def negotiate_quote(quote_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(quote)
 
+    # Log negotiation turn
+    log.info(
+        BusinessEvents.NEGOTIATION_TURN,
+        quote_id=quote.id,
+        current_price=quote.price,
+        status=quote.status.value,
+        turn_number=len(quote.negotiation_log),
+    )
+
+    # Log quote status change
+    if quote.status == QuoteStatus.priced:
+        log.info(
+            BusinessEvents.QUOTE_ACCEPTED, quote_id=quote.id, final_price=quote.price
+        )
+
     return quote
 
 
@@ -219,6 +246,29 @@ async def auto_negotiate(
 
             db.commit()
             db.refresh(quote)  # Refresh to get the updated quote with transactions
+
+            # Log negotiation turn
+            log.info(
+                BusinessEvents.NEGOTIATION_TURN,
+                quote_id=quote.id,
+                current_price=quote.price,
+                status=quote.status,
+                turn_number=len(quote.negotiation_log) if quote.negotiation_log else 0,
+            )
+
+            if quote.status == QuoteStatus.accepted:
+                log.info(
+                    BusinessEvents.QUOTE_ACCEPTED,
+                    quote_id=quote.id,
+                    final_price=quote.price,
+                )
+            elif quote.status == QuoteStatus.rejected:
+                log.info(
+                    BusinessEvents.QUOTE_REJECTED,
+                    quote_id=quote.id,
+                    reason="negotiation_failed",
+                )
+
             return quote
 
         except PayPalError:
@@ -236,6 +286,29 @@ async def auto_negotiate(
                 quote.status = QuoteStatus.accepted
             db.commit()
             db.refresh(quote)  # Refresh to get the updated quote with transactions
+
+            # Log negotiation turn
+            log.info(
+                BusinessEvents.NEGOTIATION_TURN,
+                quote_id=quote.id,
+                current_price=quote.price,
+                status=quote.status,
+                turn_number=len(quote.negotiation_log) if quote.negotiation_log else 0,
+            )
+
+            if quote.status == QuoteStatus.accepted:
+                log.info(
+                    BusinessEvents.QUOTE_ACCEPTED,
+                    quote_id=quote.id,
+                    final_price=quote.price,
+                )
+            elif quote.status == QuoteStatus.rejected:
+                log.info(
+                    BusinessEvents.QUOTE_REJECTED,
+                    quote_id=quote.id,
+                    reason="negotiation_failed",
+                )
+
             return quote
         except StripeError:
             # Keep as accepted if payment failed - allows retrying
