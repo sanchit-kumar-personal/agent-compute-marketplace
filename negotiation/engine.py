@@ -12,15 +12,14 @@ to generate dynamic counter-offers and acceptance logic. Key responsibilities:
 
 import datetime
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from db.models import Quote, QuoteStatus
 from agents.seller import SellerAgent
 from agents.buyer import BuyerAgent
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -38,6 +37,7 @@ class NegotiationEngine:
         """Initialize the negotiation engine with default parameters."""
         self.state = "initialized"
         self.seller = seller or SellerAgent()
+        self.log = structlog.get_logger(__name__)
 
     async def start_negotiation(
         self, initial_terms: Dict[str, Any]
@@ -87,11 +87,11 @@ class NegotiationEngine:
 
         try:
             # Initialize negotiation log
-            log = quote.negotiation_log if quote.negotiation_log else []
+            negotiation_log = quote.negotiation_log if quote.negotiation_log else []
 
             # Initial seller quote
             price = await self.seller.generate_quote(quote.__dict__)
-            log.append(
+            negotiation_log.append(
                 {
                     "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
                     "role": "seller",
@@ -101,13 +101,13 @@ class NegotiationEngine:
             )
             quote.price = price
             quote.status = QuoteStatus.priced
-            quote.negotiation_log = log
+            quote.negotiation_log = negotiation_log
 
             db.add(quote)
             return quote
 
         except Exception as e:
-            logger.error(f"Failed to negotiate quote {quote_id}: {str(e)}")
+            self.log.error(f"Failed to negotiate quote {quote_id}: {str(e)}")
             raise RuntimeError(f"Negotiation failed: {str(e)}")
 
     async def negotiate(self, db: Session, quote_id: int, max_turns: int = 4) -> Quote:
@@ -124,9 +124,7 @@ class NegotiationEngine:
             buyer = BuyerAgent(max_wtp=quote.buyer_max_price)
 
             # Initialize negotiation log
-            log = (
-                quote.negotiation_log
-            )  # This will return a list thanks to the property
+            negotiation_log = quote.negotiation_log if quote.negotiation_log else []
 
             # Negotiation loop
             turns = 0
@@ -136,7 +134,7 @@ class NegotiationEngine:
                 buyer_response = await buyer.respond({"price": price})
 
                 # Log buyer response
-                log.append(
+                negotiation_log.append(
                     {
                         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
                         "role": "buyer",
@@ -160,7 +158,7 @@ class NegotiationEngine:
                     )
 
                     # Log seller response
-                    log.append(
+                    negotiation_log.append(
                         {
                             "timestamp": datetime.datetime.now(
                                 datetime.UTC
@@ -175,7 +173,7 @@ class NegotiationEngine:
                     quote.status = QuoteStatus.countered
 
                 except ValueError:
-                    logger.error(f"Invalid buyer response: {buyer_response}")
+                    self.log.error(f"Invalid buyer response: {buyer_response}")
                     quote.status = QuoteStatus.rejected
                     break
 
@@ -186,9 +184,9 @@ class NegotiationEngine:
                 quote.status = QuoteStatus.rejected
 
             # Update negotiation log
-            quote.negotiation_log = log
+            quote.negotiation_log = negotiation_log
 
-            logger.info(
+            self.log.info(
                 f"Completed negotiation for quote {quote_id} "
                 f"status={quote.status} price={quote.price}"
             )
@@ -197,10 +195,5 @@ class NegotiationEngine:
             return quote
 
         except Exception as e:
-            logger.error(f"Failed to negotiate quote {quote_id}: {str(e)}")
+            self.log.error(f"Failed to negotiate quote {quote_id}: {str(e)}")
             raise RuntimeError(f"Negotiation failed: {str(e)}")
-
-
-def start_negotiation() -> SimpleNamespace:
-    """Initialize a new negotiation session."""
-    return SimpleNamespace(state="initialized")

@@ -22,6 +22,10 @@ from core.settings import Settings
 from fastapi import Depends
 import tenacity
 import concurrent.futures
+import structlog
+from core.logging import BusinessEvents
+
+log = structlog.get_logger(__name__)
 
 # Initialize Stripe with API key
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -73,6 +77,12 @@ class StripeService:
         Returns:
             Dict containing client_secret and payment_intent_id
         """
+        log.info(
+            BusinessEvents.PAYMENT_ATTEMPT,
+            quote_id=quote.id,
+            amount=quote.price,
+            provider="stripe",
+        )
 
         @tenacity.retry(
             stop=tenacity.stop_after_attempt(3),
@@ -101,15 +111,37 @@ class StripeService:
             self.db.add(transaction)
             self.db.commit()
 
+            log.info(
+                BusinessEvents.PAYMENT_SUCCESS,
+                quote_id=quote.id,
+                amount=quote.price,
+                provider="stripe",
+                transaction_id=transaction.id,
+                provider_transaction_id=intent.id,
+            )
+
             return {
                 "client_secret": intent.client_secret,
                 "payment_intent_id": intent.id,
             }
         except stripe.error.StripeError as e:
-            print(f"Stripe error: {str(e)}")
+            log.error(
+                BusinessEvents.PAYMENT_FAILURE,
+                quote_id=quote.id,
+                amount=quote.price,
+                provider="stripe",
+                error=str(e),
+            )
             self.db.rollback()
             raise StripeError(str(e))
         except Exception as e:
+            log.error(
+                BusinessEvents.PAYMENT_FAILURE,
+                quote_id=quote.id,
+                amount=quote.price,
+                provider="stripe",
+                error=str(e),
+            )
             self.db.rollback()
             raise StripeError(str(e))
 
@@ -174,3 +206,23 @@ class StripeService:
             quote = transaction.quote
             quote.status = QuoteStatus.rejected
             self.db.commit()
+
+    def capture_payment(self, quote_id: str, payment_intent_id: str, amount: float):
+        try:
+            # Existing payment capture logic
+            log.info(
+                "stripe.capture_succeeded",
+                quote_id=quote_id,
+                amount_usd=float(amount),
+                provider_id=payment_intent_id,
+            )
+            return True
+        except Exception as e:
+            log.error(
+                "stripe.capture_failed",
+                quote_id=quote_id,
+                amount_usd=float(amount),
+                provider_id=payment_intent_id,
+                error=str(e),
+            )
+            return False

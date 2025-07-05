@@ -217,3 +217,32 @@ The traces will show:
 - HTTP request paths and methods
 - Request/response timing
 - Dependencies and relationships between services
+
+## Logging
+
+The application uses structured JSON logging with OpenTelemetry trace context injection. All log output is in JSON format and includes:
+
+- ISO timestamps
+- Log levels
+- OpenTelemetry trace IDs (when available)
+- Custom contextual fields
+
+To view logs in pretty-printed JSON format:
+
+```bash
+uvicorn main:app --reload | jq
+```
+
+Example log output:
+
+```json
+{
+  "timestamp": "2024-01-20T10:30:45.123Z",
+  "level": "info",
+  "event": "stripe.capture_succeeded",
+  "quote_id": "qt_abc123",
+  "amount_usd": 99.99,
+  "provider_id": "pi_xyz789",
+  "trace_id": "0af7651916cd43dd8448eb211c80319c"
+}
+```
