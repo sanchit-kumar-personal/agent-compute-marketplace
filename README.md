@@ -246,3 +246,52 @@ Example log output:
   "trace_id": "0af7651916cd43dd8448eb211c80319c"
 }
 ```
+
+## Metrics
+
+The application exposes Prometheus metrics at `/metrics` endpoint for monitoring quote throughput and other operational metrics.
+
+### Available Metrics
+
+**Custom Business Metrics:**
+
+- `agentcloud_quotes_total` - Total number of quotes created
+- `agentcloud_negotiation_latency_seconds` - Time taken for negotiation rounds (histogram)
+- `agentcloud_payment_success_total` - Total successful payments by provider (counter with labels)
+
+**Standard FastAPI Metrics:**
+
+- HTTP request rates, response times, status codes
+- Request duration histograms
+- Active connections
+
+### Security
+
+In production, the metrics endpoint can be protected using:
+
+```bash
+# Set environment variables for production
+export ENVIRONMENT=production
+export METRICS_AUTH_TOKEN=your-secure-token-here
+
+# Access metrics with authentication
+curl -H "X-Metrics-Auth: your-secure-token-here" http://localhost:8000/metrics
+```
+
+The endpoint also allows access from private networks (10.x.x.x, 192.168.x.x, 172.x.x.x) for VPN access.
+
+### Running Prometheus + Grafana
+
+```bash
+docker compose -f docker-compose.metrics.yml up -d  # Prometheus + Grafana
+uvicorn main:app --reload  # run the app
+# Open localhost:9090 -> verify agentcloud_quotes_total
+# Grafana default creds admin/admin -> import dashboard ID 11159 (FastAPI metrics)
+```
+
+### Grafana Dashboard Setup
+
+1. Open http://localhost:3000 (admin/admin)
+2. Add Prometheus data source: `http://prometheus:9090`
+3. Import dashboard ID 11159 for FastAPI metrics
+4. Create custom panels for business metrics like `agentcloud_quotes_total`

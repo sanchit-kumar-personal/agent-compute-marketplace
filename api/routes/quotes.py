@@ -21,6 +21,7 @@ import logging
 from typing import List
 import structlog
 from core.logging import BusinessEvents
+from core.metrics import quotes_total
 
 logger = logging.getLogger(__name__)
 log = structlog.get_logger(__name__)
@@ -46,6 +47,9 @@ async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
     db.add(quote)
     db.commit()
     db.refresh(quote)
+
+    # Increment Prometheus counter
+    quotes_total.inc()
 
     log.info(
         BusinessEvents.QUOTE_CREATED,
