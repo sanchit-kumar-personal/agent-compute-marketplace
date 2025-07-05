@@ -41,3 +41,5 @@ opentelemetry-instrumentation-fastapi>=0.44b0
 opentelemetry-exporter-otlp>=1.25.0
 opentelemetry-instrumentation-logging>=0.44b0  # inject trace IDs
 structlog>=24.1.0
+
+prometheus-fastapi-instrumentator>=7.0.0

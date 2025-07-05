@@ -22,6 +22,7 @@ from api.routes.quotes import router as quotes_router
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from core.logging import configure_logging
 from api.middleware import log_api_entry
+from core.metrics import init_metrics, add_metrics_auth_middleware
 
 
 @asynccontextmanager
@@ -59,6 +60,12 @@ app = FastAPI(
 
 # Initialize FastAPI instrumentation
 FastAPIInstrumentor.instrument_app(app)
+
+# Initialize Prometheus metrics
+init_metrics(app)
+
+# Add metrics authentication middleware (for production)
+add_metrics_auth_middleware(app)
 
 # Add logging middleware first
 app.middleware("http")(log_api_entry)
