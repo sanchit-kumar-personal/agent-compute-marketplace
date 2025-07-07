@@ -123,7 +123,10 @@ def test_api_request_logging(client):
     # Create a test logger
     test_logger = _TestLogger()
 
-    # Configure structlog with our test logger
+    # Clear structlog's cache to ensure our test configuration is used
+    structlog.reset_defaults()
+
+    # Also clear the logger cache to ensure cached loggers are reconfigured
     structlog.configure(
         processors=[
             structlog.stdlib.filter_by_level,
@@ -136,7 +139,7 @@ def test_api_request_logging(client):
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=False,  # Don't cache to ensure fresh config
     )
 
     # Make an API request

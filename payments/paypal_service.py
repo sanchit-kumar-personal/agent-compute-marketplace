@@ -4,7 +4,8 @@ import tenacity
 from decimal import Decimal
 from typing import Dict, Any, Tuple
 from datetime import datetime, timedelta, UTC
-from db.models import TransactionStatus
+from db.models import TransactionStatus, AuditLog, AuditAction
+from db.session import SessionLocal
 import structlog
 
 BASE = os.getenv("PAYPAL_BASE", "https://api-m.sandbox.paypal.com")
@@ -106,6 +107,24 @@ def capture_payment(quote_id: str, order_id: str, amount: float):
             amount_usd=float(amount),
             provider_id=order_id,
         )
+
+        # Add audit log for successful payment
+        db = SessionLocal()
+        try:
+            audit_log = AuditLog(
+                quote_id=int(quote_id),
+                action=AuditAction.payment_succeeded,
+                payload={
+                    "provider_id": order_id,
+                    "amount": float(amount),
+                    "provider": "paypal",
+                },
+            )
+            db.add(audit_log)
+            db.commit()
+        finally:
+            db.close()
+
         return True
     except Exception as e:
         log.error(
@@ -115,4 +134,23 @@ def capture_payment(quote_id: str, order_id: str, amount: float):
             provider_id=order_id,
             error=str(e),
         )
+
+        # Add audit log for failed payment
+        db = SessionLocal()
+        try:
+            audit_log = AuditLog(
+                quote_id=int(quote_id),
+                action=AuditAction.payment_failed,
+                payload={
+                    "provider_id": order_id,
+                    "amount": float(amount),
+                    "provider": "paypal",
+                    "error": str(e),
+                },
+            )
+            db.add(audit_log)
+            db.commit()
+        finally:
+            db.close()
+
         return False
