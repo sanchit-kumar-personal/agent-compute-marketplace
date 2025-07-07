@@ -16,6 +16,8 @@ from db.models import (
     PaymentProvider,
     TransactionStatus,
     QuoteStatus,
+    AuditLog,
+    AuditAction,
 )
 from sqlalchemy.orm import Session
 from core.settings import Settings
@@ -191,6 +193,18 @@ class StripeService:
             quote = transaction.quote
             quote.status = QuoteStatus.paid
 
+            # Add audit log for successful payment
+            audit_log = AuditLog(
+                quote_id=quote.id,
+                action=AuditAction.payment_succeeded,
+                payload={
+                    "provider_id": payment_intent.id,
+                    "amount": float(transaction.amount_usd),
+                    "provider": "stripe",
+                },
+            )
+            self.db.add(audit_log)
+
             self.db.commit()
 
     async def _handle_failed_payment(
@@ -202,9 +216,21 @@ class StripeService:
         )
 
         if transaction:
+            # Update transaction status
             transaction.status = TransactionStatus.failed
-            quote = transaction.quote
-            quote.status = QuoteStatus.rejected
+
+            # Add audit log for failed payment
+            audit_log = AuditLog(
+                quote_id=transaction.quote_id,
+                action=AuditAction.payment_failed,
+                payload={
+                    "provider_id": payment_intent.id,
+                    "amount": float(transaction.amount_usd),
+                    "provider": "stripe",
+                },
+            )
+            self.db.add(audit_log)
+
             self.db.commit()
 
     def capture_payment(self, quote_id: str, payment_intent_id: str, amount: float):

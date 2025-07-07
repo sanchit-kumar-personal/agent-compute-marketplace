@@ -20,12 +20,14 @@ from sqlalchemy import (
     Enum,
     Numeric,
     Index,
+    JSON,
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime, UTC
 from enum import Enum as PyEnum
 from typing import List, Dict, Any
 import json
+from sqlalchemy.sql import func
 
 Base = declarative_base()
 
@@ -143,3 +145,31 @@ class Quote(Base):
 
     def __repr__(self):
         return f"<Quote(id={self.id}, status={self.status})>"
+
+
+class AuditAction(PyEnum):
+    """Enum for audit log actions."""
+
+    quote_created = "quote_created"
+    negotiation_turn = "negotiation_turn"
+    quote_accepted = "quote_accepted"
+    quote_rejected = "quote_rejected"
+    payment_succeeded = "payment_succeeded"
+    payment_failed = "payment_failed"
+
+
+class AuditLog(Base):
+    """Model for audit logs tracking all quote and payment actions."""
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    quote_id = Column(Integer, ForeignKey("quotes.id"), index=True)
+    action = Column(Enum(AuditAction), index=True)
+    payload = Column(JSON, nullable=False)  # generic blob
+    created_at = Column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return (
+            f"<AuditLog(id={self.id}, quote_id={self.quote_id}, action={self.action})>"
+        )

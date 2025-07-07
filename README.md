@@ -295,3 +295,35 @@ uvicorn main:app --reload  # run the app
 2. Add Prometheus data source: `http://prometheus:9090`
 3. Import dashboard ID 11159 for FastAPI metrics
 4. Create custom panels for business metrics like `agentcloud_quotes_total`
+
+## Audit Log
+
+The system maintains comprehensive audit logs of all quote and payment actions in the `audit_logs` table. Every API request to `/api` endpoints that results in a successful response (2xx status codes) is automatically logged.
+
+### Audit Actions Tracked
+
+- `quote_created` - When a new quote request is submitted
+- `negotiation_turn` - During quote negotiation processes
+- `quote_accepted` - When a quote is accepted
+- `quote_rejected` - When a quote is rejected
+- `payment_succeeded` - When a payment is successfully processed
+- `payment_failed` - When a payment fails
+
+### PostgreSQL Query Example
+
+```sql
+-- Get all audit logs for a specific quote
+SELECT action, payload FROM audit_logs WHERE quote_id=42;
+```
+
+### Database Schema
+
+The `audit_logs` table contains:
+
+- `id` (Primary Key)
+- `quote_id` (Foreign Key to quotes table, indexed)
+- `action` (Enum of audit actions, indexed)
+- `payload` (JSON blob with action details)
+- `created_at` (Timestamp, defaults to current time)
+
+All quote and payment events are automatically captured through middleware and direct logging in payment services.

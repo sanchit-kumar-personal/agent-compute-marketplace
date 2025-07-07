@@ -87,21 +87,28 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False)
 AsyncSessionLocal = async_sessionmaker(expire_on_commit=False)
 
 
-def get_db(
-    settings: Settings = Depends(get_settings),
-) -> Generator[Session, None, None]:
-    """FastAPI dependency that yields database sessions."""
-    engine = get_engine(settings)
-    SessionLocal.configure(bind=engine)
+def get_db():
     db = SessionLocal()
     try:
         yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
     finally:
         db.close()
+
+
+def get_db_dependency():
+    """Get database session and store in request state for middleware reuse."""
+    db = SessionLocal()
+    try:
+        # Store in request state so middleware can reuse it
+        yield db
+    finally:
+        db.close()
+
+
+# Add this after db = SessionLocal() add:
+def store_db_in_request_state(request, db):
+    """Store database session in request state for middleware access."""
+    request.state.db = db
 
 
 async def get_async_db(

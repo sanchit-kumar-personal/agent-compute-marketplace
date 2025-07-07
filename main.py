@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.settings import Settings
 from core.dependencies import get_settings, init_settings, clear_settings
 from core.tracing import init_tracer
+from core.audit import AuditMiddleware
 from negotiation import router as negotiation_router
 from db.session import init_db, init_async_db
 from api import routes
@@ -69,6 +70,9 @@ add_metrics_auth_middleware(app)
 
 # Add logging middleware first
 app.middleware("http")(log_api_entry)
+
+# Add audit middleware
+app.add_middleware(AuditMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
