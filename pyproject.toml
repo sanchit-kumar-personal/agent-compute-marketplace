@@ -1,0 +1,105 @@
+[tool.poetry]
+name = "agent-compute-marketplace"
+version = "0.1.0"
+description = "An AI-powered sandbox where autonomous agents negotiate cloud compute and settle transactions"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "agent_compute_marketplace", from = "."}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+alembic = "^1.13.0"
+fastapi = "^0.110.0"
+httpx = "^0.25.0"
+langchain-openai = "^0.1.0"
+langchain-core = "^0.2.0"
+matplotlib = "^3.8.0"
+openai = "^1.0.0"
+pandas = "^2.2.0"
+paypalrestsdk = "^1.13.0"
+pydantic = "^2.5.0"
+pydantic-settings = "^2.1.0"
+python-dotenv = "^1.0.0"
+python-multipart = "^0.0.6"
+sqlalchemy = "^2.0.0"
+sqlmodel = "^0.0.14"
+streamlit = "1.46.1"
+stripe = "^7.0.0"
+uvicorn = "^0.24.0"
+web3 = "^6.0.0"
+asyncpg = "^0.29.0"
+psycopg2-binary = "^2.9.0"
+paypal-checkout-serversdk = "1.0.3"
+requests = "^2.32.0"
+deprecated = "^1.2.14"
+opentelemetry-sdk = "^1.25.0"
+opentelemetry-instrumentation-fastapi = "^0.44b0"
+opentelemetry-exporter-otlp = "^1.25.0"
+opentelemetry-instrumentation-logging = "^0.44b0"
+structlog = "^24.1.0"
+prometheus-fastapi-instrumentator = "^7.0.0"
+mako = "^1.3.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.0.0"
+pytest = "^7.0.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.0.0"
+pytest-postgresql = "^5.0.0"
+ruff = "^0.1.0"
+
+[tool.poetry.scripts]
+start = "uvicorn main:app --host 0.0.0.0 --port 8000"
+dev = "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | migrations
+)/
+'''
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --cov=. --cov-report=term-missing"
+asyncio_mode = "auto" 
