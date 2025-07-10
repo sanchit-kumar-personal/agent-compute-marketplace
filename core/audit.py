@@ -5,13 +5,15 @@ This module provides middleware for logging all API requests that result in 2xx 
 Every quote/payment action is recorded in the audit_logs table.
 """
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from sqlalchemy.orm import Session
-from db.models import AuditAction
-from db import models
-from typing import Callable
+from collections.abc import Callable
+
 import structlog
+from fastapi import Request, Response
+from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from db import models
+from db.models import AuditAction
 
 log = structlog.get_logger(__name__)
 

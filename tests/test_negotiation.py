@@ -9,14 +9,16 @@ This module contains test cases for:
 - Edge cases and error handling
 """
 
-import pytest
+from datetime import UTC, datetime
 from unittest.mock import patch
-from negotiation.engine import NegotiationEngine
+
+import pytest
+from langchain_core.messages import AIMessage
+
 from agents.buyer import BuyerAgent
 from agents.seller import SellerAgent
 from db.models import Quote, QuoteStatus
-from datetime import datetime, UTC
-from langchain_core.messages import AIMessage
+from negotiation.engine import NegotiationEngine
 
 
 @pytest.fixture
@@ -81,10 +83,10 @@ async def test_multi_turn_negotiation_accepted(mock_quote, test_db_session):
     seller_responses = ["5.0", "4.5"]
     buyer_responses = ["4.0", "accept"]
 
-    with patch("agents.seller.get_llm") as mock_seller_llm, patch(
-        "agents.buyer.get_llm"
-    ) as mock_buyer_llm:
-
+    with (
+        patch("agents.seller.get_llm") as mock_seller_llm,
+        patch("agents.buyer.get_llm") as mock_buyer_llm,
+    ):
         mock_seller_llm.return_value = MockLLM(seller_responses)
         mock_buyer_llm.return_value = MockLLM(buyer_responses)
 

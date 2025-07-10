@@ -7,23 +7,23 @@ where AI agents negotiate cloud compute resources and handle payments.
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 
-from core.settings import Settings
-from core.dependencies import get_settings, init_settings, clear_settings
-from core.tracing import init_tracer
-from core.audit import AuditMiddleware
-from negotiation import router as negotiation_router
-from db.session import init_db, init_async_db
-from api import routes
-from api import webhooks
-from api.routes.quotes import router as quotes_router
+from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from core.logging import configure_logging
+
+from api import routes, webhooks
 from api.middleware import log_api_entry
-from core.metrics import init_metrics, add_metrics_auth_middleware
+from api.routes.quotes import router as quotes_router
+from core.audit import AuditMiddleware
+from core.dependencies import clear_settings, get_settings, init_settings
+from core.logging import configure_logging
+from core.metrics import add_metrics_auth_middleware, init_metrics
+from core.settings import Settings
+from core.tracing import init_tracer
+from db.session import init_async_db, init_db
+from negotiation import router as negotiation_router
 
 
 @asynccontextmanager

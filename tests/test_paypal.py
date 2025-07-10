@@ -1,5 +1,6 @@
 import pytest
-from db.models import QuoteStatus, TransactionStatus, PaymentProvider
+
+from db.models import PaymentProvider, QuoteStatus, TransactionStatus
 
 
 @pytest.fixture(autouse=True)
@@ -90,8 +91,8 @@ def test_paypal_failure_flow(client, monkeypatch):
 
 def test_paypal_declined(client, monkeypatch):
     """Test PayPal declined payment flow."""
-    from payments import paypal_service
     from db.models import Quote, QuoteStatus
+    from payments import paypal_service
 
     # Mock PayPal to return declined status
     monkeypatch.setattr(

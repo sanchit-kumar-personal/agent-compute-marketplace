@@ -12,12 +12,14 @@ to generate dynamic counter-offers and acceptance logic. Key responsibilities:
 
 import datetime
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
-from sqlalchemy.orm import Session
-from db.models import Quote, QuoteStatus
-from agents.seller import SellerAgent
-from agents.buyer import BuyerAgent
+from typing import Any
+
 import structlog
+from sqlalchemy.orm import Session
+
+from agents.buyer import BuyerAgent
+from agents.seller import SellerAgent
+from db.models import Quote, QuoteStatus
 
 log = structlog.get_logger(__name__)
 
@@ -27,39 +29,39 @@ class NegotiationState:
     """Represents the state of a negotiation."""
 
     state: str
-    terms: Dict[str, Any]
+    terms: dict[str, Any]
 
 
 class NegotiationEngine:
     """Core engine that manages the negotiation process between agents."""
 
-    def __init__(self, seller: Optional[SellerAgent] = None):
+    def __init__(self, seller: SellerAgent | None = None):
         """Initialize the negotiation engine with default parameters."""
         self.state = "initialized"
         self.seller = seller or SellerAgent()
         self.log = structlog.get_logger(__name__)
 
     async def start_negotiation(
-        self, initial_terms: Dict[str, Any]
+        self, initial_terms: dict[str, Any]
     ) -> NegotiationState:
         """Begin a new negotiation session with initial terms."""
         if not initial_terms:
             raise ValueError("Initial terms cannot be empty")
         return NegotiationState(state="initialized", terms=initial_terms)
 
-    async def process_offer(self, offer: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_offer(self, offer: dict[str, Any]) -> dict[str, Any]:
         """Process an offer and determine the next action."""
         if not offer or "price" not in offer:
             raise ValueError("Invalid offer format")
         return {"status": "processed", "offer": offer}
 
-    async def generate_counter_offer(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_counter_offer(self, context: dict[str, Any]) -> dict[str, Any]:
         """Generate a context-aware counter-offer using GPT."""
         if not context:
             raise ValueError("Context required for counter-offer")
         return {"status": "counter_offer_generated", "context": context}
 
-    async def finalize_negotiation(self) -> Dict[str, str]:
+    async def finalize_negotiation(self) -> dict[str, str]:
         """Complete the negotiation and prepare for settlement."""
         return {"status": "finalized", "state": "completed"}
 

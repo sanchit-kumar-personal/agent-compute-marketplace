@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # Set environment variables
-ENV POETRY_VERSION=1.8.2
+ENV POETRY_VERSION=2.1.3
 ENV POETRY_NO_INTERACTION=1
 ENV POETRY_CACHE_DIR=/tmp/poetry_cache
 
@@ -22,14 +22,13 @@ COPY pyproject.toml poetry.lock* ./
 
 # Install Python dependencies
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-root \
+    && poetry install --only=main --no-root \
     && rm -rf $POETRY_CACHE_DIR
 
 # Copy application code
 COPY . .
 
-# Install the application
-RUN poetry install --no-dev
+# No need to install again since we're using package-mode=false
 
 # Expose port
 EXPOSE 8000
@@ -39,4 +38,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/healthz || exit 1
 
 # Run the application
-CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 

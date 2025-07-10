@@ -120,6 +120,37 @@ agent-compute-marketplace/
 └── README.md
 ```
 
+## Environment Configuration
+
+The project uses environment variables for configuration. All developers use the same approach:
+
+### Setup Environment Variables
+
+```bash
+# Copy the example environment file
+cp env.example .env
+
+# Edit .env to add your actual API keys
+# The file contains sensible defaults for Docker networking
+```
+
+### Key Environment Variables
+
+The environment file includes configuration for:
+
+- **Database**: Uses Docker networking (`db:5432`) when running with Docker Compose
+- **Observability**: Configured for Docker service names (`jaeger:4317`, `prometheus:9090`)
+- **External APIs**: Add your own API keys for OpenAI, Stripe, PayPal
+- **Application Settings**: Debug mode, service names, etc.
+
+### Docker vs Local Development
+
+The `env.example` file is pre-configured for Docker development. When you run `docker-compose up`, the services automatically connect using Docker's internal networking.
+
+For local development (running services directly on your host), you would need to update the URLs to use `localhost` instead of service names.
+
+## 🐳 Docker Commands
+
 ## Environment Variables
 
 Create a `.env` file from the `env.example` template:
