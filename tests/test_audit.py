@@ -8,24 +8,25 @@ This module tests:
 - Database interactions
 """
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from db.models import (
-    Base,
-    AuditLog,
     AuditAction,
+    AuditLog,
+    Base,
+    PaymentProvider,
     Quote,
     QuoteStatus,
     Transaction,
     TransactionStatus,
-    PaymentProvider,
 )
 from db.session import get_db
 from main import app
-import json
-
 
 # Test database setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test_audit.db"
@@ -76,7 +77,7 @@ def test_audit_written(client, db_session):
 
     # Since the middleware only logs /api requests, let's test that
     # We'll mock the audit middleware behavior directly
-    from db.models import AuditLog, AuditAction
+    from db.models import AuditAction, AuditLog
 
     # Create a quote manually to test audit logging
     quote = Quote(

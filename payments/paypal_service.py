@@ -1,18 +1,20 @@
 import os
-import requests
-import tenacity
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Dict, Any, Tuple
-from datetime import datetime, timedelta, UTC
-from db.models import TransactionStatus, AuditLog, AuditAction
-from db.session import SessionLocal
+from typing import Any
+
+import requests
 import structlog
+import tenacity
+
+from db.models import AuditAction, AuditLog, TransactionStatus
+from db.session import SessionLocal
 
 BASE = os.getenv("PAYPAL_BASE", "https://api-m.sandbox.paypal.com")
 CLIENT = os.getenv("PAYPAL_CLIENT_ID")
 SECRET = os.getenv("PAYPAL_SECRET")
 
-_TOKEN_CACHE: Tuple[str, datetime] | None = None
+_TOKEN_CACHE: tuple[str, datetime] | None = None
 
 log = structlog.get_logger(__name__)
 
@@ -56,7 +58,7 @@ class PayPalService:
         wait=tenacity.wait_exponential(),
         reraise=True,
     )
-    def create_and_capture(self, amount: Decimal, quote_id: int) -> Dict[str, Any]:
+    def create_and_capture(self, amount: Decimal, quote_id: int) -> dict[str, Any]:
         """
         One-shot order create + capture to mirror Stripe immediacy.
         Returns dict with capture_id, PayPal order status, and mapped transaction status.

@@ -1,8 +1,9 @@
-from logging.config import fileConfig
 import os
+from logging.config import fileConfig
+
+from sqlmodel import SQLModel, create_engine
 
 from alembic import context
-from sqlmodel import SQLModel, create_engine
 
 # Import settings with fallback
 try:

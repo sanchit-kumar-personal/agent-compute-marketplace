@@ -3,13 +3,14 @@ Tests for the quote workflow functionality.
 """
 
 import pytest
-from main import app
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
+from core.dependencies import clear_settings, init_settings
 from db.models import Base
 from db.session import get_db
-from core.dependencies import init_settings, clear_settings
-from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
+from main import app
 
 
 # Unit tests using SQLite

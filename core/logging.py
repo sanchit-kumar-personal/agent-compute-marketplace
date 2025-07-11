@@ -1,7 +1,8 @@
 import logging
-import sys
-import structlog
 import os
+import sys
+
+import structlog
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 # Global variable to store test output

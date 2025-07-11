@@ -5,10 +5,11 @@ This module sets up FastAPI instrumentation to expose metrics in Prometheus form
 at the /metrics endpoint with optional authentication.
 """
 
-from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter, Histogram
-from fastapi import Request, HTTPException, status
 import os
+
+from fastapi import HTTPException, Request, status
+from prometheus_client import Counter, Histogram
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # Custom metrics
 quotes_total = Counter("agentcloud_quotes_total", "Total number of quotes created")

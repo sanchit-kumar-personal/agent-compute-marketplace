@@ -9,24 +9,25 @@ This module defines SQLAlchemy ORM models for:
 - Audit logs
 """
 
+import json
+from datetime import UTC, datetime
+from enum import Enum as PyEnum
+from typing import Any
+
 from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Float,
-    DateTime,
-    ForeignKey,
-    Text,
-    Enum,
-    Numeric,
-    Index,
     JSON,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
 )
 from sqlalchemy.orm import declarative_base, relationship
-from datetime import datetime, UTC
-from enum import Enum as PyEnum
-from typing import List, Dict, Any
-import json
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -117,7 +118,7 @@ class Quote(Base):
     transactions = relationship("Transaction", backref="quote", lazy="dynamic")
 
     @property
-    def negotiation_log(self) -> List[Dict[str, Any]]:
+    def negotiation_log(self) -> list[dict[str, Any]]:
         """Get the negotiation log as a list of dictionaries."""
         if not self._negotiation_log:
             return []
@@ -127,7 +128,7 @@ class Quote(Base):
             return []
 
     @negotiation_log.setter
-    def negotiation_log(self, value: List[Dict[str, Any]]) -> None:
+    def negotiation_log(self, value: list[dict[str, Any]]) -> None:
         """Set the negotiation log, converting to JSON string if needed."""
         if isinstance(value, str):
             # Validate it's a valid JSON string

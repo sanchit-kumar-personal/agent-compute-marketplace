@@ -1,7 +1,9 @@
+import os
 import sys
 import tempfile
-import os
+
 import structlog
+
 from core.logging import BusinessEvents
 
 
@@ -21,7 +23,7 @@ def capture_log_output(func):
             # Flush the buffers
             tmp.flush()
             # Read the file
-            with open(tmp.name, "r") as f:
+            with open(tmp.name) as f:
                 output = f.read()
             # Extract the JSON line (last line that starts with {"
             for line in output.splitlines():

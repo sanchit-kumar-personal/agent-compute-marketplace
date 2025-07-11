@@ -1,8 +1,9 @@
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
-from dotenv import load_dotenv
-from typing import Literal
 import os
+from typing import Literal
+
+from dotenv import load_dotenv
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
 # Load .env file automatically
 load_dotenv()
@@ -39,6 +40,20 @@ class Settings(BaseSettings):
     APP_NAME: str = "Agent Compute Marketplace"
     DEBUG: bool = False
     ENVIRONMENT: Literal["development", "production"] = "development"
+
+    # API Configuration (used by dashboard)
+    API_BASE: str = "http://localhost:8000"
+
+    # Observability (Optional)
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
+    OTEL_SERVICE_NAME: str = "agent-compute-marketplace"
+    OTEL_RESOURCE_ATTRIBUTES: str = (
+        "service.name=agent-compute-marketplace,service.version=0.1.0"
+    )
+
+    # Metrics (Optional)
+    METRICS_ENABLED: bool = True
+    PROMETHEUS_ENDPOINT: str = "http://localhost:9090"
 
     model_config = ConfigDict(env_file=".env", case_sensitive=True)
 

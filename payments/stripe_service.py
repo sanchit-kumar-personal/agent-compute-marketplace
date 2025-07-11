@@ -7,25 +7,26 @@ This module handles all Stripe-related payment operations including:
 - Managing payment status updates
 """
 
-import os
-import stripe
-from typing import Dict, Any, Optional, Union
-from db.models import (
-    Transaction,
-    Quote,
-    PaymentProvider,
-    TransactionStatus,
-    QuoteStatus,
-    AuditLog,
-    AuditAction,
-)
-from sqlalchemy.orm import Session
-from core.settings import Settings
-from fastapi import Depends
-import tenacity
 import concurrent.futures
+import os
+from typing import Any, Union
+
+import stripe
 import structlog
+import tenacity
+from sqlalchemy.orm import Session
+
 from core.logging import BusinessEvents
+from core.settings import Settings
+from db.models import (
+    AuditAction,
+    AuditLog,
+    PaymentProvider,
+    Quote,
+    QuoteStatus,
+    Transaction,
+    TransactionStatus,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -39,15 +40,13 @@ class StripeError(Exception):
 
 
 class StripeService:
-    def __init__(
-        self, db: Session, settings: Optional[Union[Settings, Depends]] = None
-    ):
+    def __init__(self, db: Session, settings: Union[Settings, None] = None):
         """
         Initialize StripeService.
 
         Args:
             db: Database session
-            settings: Optional settings object or Depends object. If not provided, will try to get from environment.
+            settings: Optional settings object. If not provided, will try to get from environment.
         """
         self.db = db
         if settings:
@@ -69,7 +68,7 @@ class StripeService:
         except Exception:
             return False
 
-    async def create_payment_intent(self, quote: Quote) -> Dict[str, Any]:
+    async def create_payment_intent(self, quote: Quote) -> dict[str, Any]:
         """
         Create a Stripe PaymentIntent for a quote.
 

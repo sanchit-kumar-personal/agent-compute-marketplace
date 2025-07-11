@@ -9,24 +9,27 @@ This module defines FastAPI routes for:
 - System health and metrics
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from typing import List, Dict, Any, Union
+import json
+from datetime import datetime
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy.orm import Session
-from . import schemas
-from db.session import get_db
+
+from agents.seller import SellerAgent
 from db.models import (
+    PaymentProvider,
     Quote,
     QuoteStatus,
     Transaction,
     TransactionStatus,
-    PaymentProvider,
 )
-from pydantic import BaseModel, ConfigDict, field_validator
-from datetime import datetime
-from agents.seller import SellerAgent
+from db.session import get_db
 from negotiation.engine import NegotiationEngine
-from payments.paypal_service import PayPalService, PayPalError
-import json
+from payments.paypal_service import PayPalError, PayPalService
+
+from . import schemas
 
 router = APIRouter()
 
@@ -37,7 +40,7 @@ def get_seller_agent():
 
 
 # Resource routes
-@router.get("/resources", response_model=List[schemas.ComputeResource])
+@router.get("/resources", response_model=list[schemas.ComputeResource])
 async def list_resources():
     """List available compute resources."""
     # For now, return a static list of resources
@@ -128,16 +131,14 @@ class QuoteOut(BaseModel):
     price: float  # Price is required
     status: str
     created_at: datetime
-    negotiation_log: List[Dict[str, Any]]
-    transactions: List[Dict[str, Any]] = []  # Add transactions field
+    negotiation_log: list[dict[str, Any]]
+    transactions: list[dict[str, Any]] = []  # Add transactions field
 
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("negotiation_log", mode="before")
     @classmethod
-    def parse_negotiation_log(
-        cls, value: Union[str, List, None]
-    ) -> List[Dict[str, Any]]:
+    def parse_negotiation_log(cls, value: str | list | None) -> list[dict[str, Any]]:
         """Parse negotiation_log from various input types into a list of dicts."""
         if value is None:
             return []

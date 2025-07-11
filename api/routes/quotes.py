@@ -2,26 +2,27 @@
 Quote management routes
 """
 
+import logging
+from datetime import UTC, datetime
+
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from db.session import get_db
-from db.models import (
-    Quote,
-    Transaction,
-    QuoteStatus,
-    PaymentProvider,
-    TransactionStatus,
-)
+
 from api.schemas import QuoteCreate, QuoteOut
-from payments.stripe_service import StripeService, StripeError
-from datetime import datetime, UTC
-from core.settings import Settings
 from core.dependencies import get_settings
-import logging
-from typing import List
-import structlog
 from core.logging import BusinessEvents
 from core.metrics import quotes_total
+from core.settings import Settings
+from db.models import (
+    PaymentProvider,
+    Quote,
+    QuoteStatus,
+    Transaction,
+    TransactionStatus,
+)
+from db.session import get_db
+from payments.stripe_service import StripeError, StripeService
 
 logger = logging.getLogger(__name__)
 log = structlog.get_logger(__name__)
@@ -63,7 +64,7 @@ async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
     return {"quote_id": quote.id}
 
 
-@router.get("/recent", response_model=List[QuoteOut])
+@router.get("/recent", response_model=list[QuoteOut])
 async def recent_quotes(limit: int = 20, db: Session = Depends(get_db)):
     """Get recent quotes ordered by creation date."""
     quotes = db.query(Quote).order_by(Quote.created_at.desc()).limit(limit).all()
@@ -215,7 +216,7 @@ async def auto_negotiate(
     db.commit()
 
     if provider == "paypal":
-        from payments.paypal_service import PayPalService, PayPalError
+        from payments.paypal_service import PayPalError, PayPalService
 
         try:
             paypal = PayPalService()

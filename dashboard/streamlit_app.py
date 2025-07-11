@@ -1,10 +1,12 @@
-import os
-import requests
 import json
-import pandas as pd
-import streamlit as st
+import os
 import time
-from dashboard.plot import price_trend
+
+import pandas as pd
+import requests
+import streamlit as st
+
+from plot import price_trend
 
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 

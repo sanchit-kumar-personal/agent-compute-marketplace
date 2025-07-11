@@ -1,8 +1,9 @@
 import json
 import logging
 from pathlib import Path
+from typing import Any
+
 from core.llm import get_llm
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ BASE_PRICES = {
 
 
 class SellerAgent:
-    async def generate_quote(self, quote: Dict[str, Any]) -> float:
+    async def generate_quote(self, quote: dict[str, Any]) -> float:
         """Generate a quote price using LLM or fallback to deterministic pricing.
 
         Args:

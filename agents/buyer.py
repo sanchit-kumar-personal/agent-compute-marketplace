@@ -6,6 +6,7 @@ The agent accepts if the price is below max willingness to pay, otherwise makes 
 """
 
 import json
+
 from core.llm import get_llm
 
 
@@ -35,10 +36,10 @@ class BuyerAgent:
             Response string ('accept' or counter-offer price)
         """
         prompt = (
-            "You are a buyer. If seller price is <= {max}, reply 'accept'. "
+            f"You are a buyer. If seller price is <= {self.max_wtp}, reply 'accept'. "
             "Otherwise reply with a lower numeric counter offer. "
             "Never explain."
-        ).format(max=self.max_wtp)
+        )
 
         msg = json.dumps({"seller_price": quote["price"]})
 

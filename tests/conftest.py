@@ -1,17 +1,19 @@
 """Test configuration and fixtures."""
 
+import json
 import os
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
-from main import app
-from core.settings import Settings
-from unittest.mock import patch
+from langchain_core.messages import AIMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+from core.settings import Settings
 from db.models import Base
-from langchain_core.messages import AIMessage
-import json
+from main import app
 
 
 class OpenAIResponse:
@@ -290,9 +292,10 @@ def postgres_client(postgres_test_settings):
 @pytest.fixture(autouse=True)
 def mock_stripe_setup():
     """Mock Stripe API for all tests."""
-    with patch("stripe.api_key", "sk_test_mock"), patch(
-        "stripe.PaymentIntent.create"
-    ) as mock_create:
+    with (
+        patch("stripe.api_key", "sk_test_mock"),
+        patch("stripe.PaymentIntent.create") as mock_create,
+    ):
         mock_create.return_value = type(
             "PaymentIntent", (), {"id": "pi_mock", "status": "requires_payment_method"}
         )()
@@ -314,6 +317,7 @@ def pytest_configure(config):
 def test_db():
     """Legacy test database fixture - kept for backward compatibility."""
     import os
+
     from db.session import get_db
 
     # Set up in-memory database
