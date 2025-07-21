@@ -3,9 +3,10 @@ Smoke tests for basic application functionality.
 """
 
 from unittest.mock import patch
-from payments.stripe_service import StripeService
-from payments.paypal_service import PayPalService
+
 from core.settings import Settings
+from payments.paypal_service import PayPalService
+from payments.stripe_service import StripeService
 
 
 def test_root_endpoint(client):

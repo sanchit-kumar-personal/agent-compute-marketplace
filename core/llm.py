@@ -1,11 +1,11 @@
-from functools import lru_cache
-from langchain_openai import ChatOpenAI
 import os
-from typing import Optional
+from functools import lru_cache
+
+from langchain_openai import ChatOpenAI
 
 
 @lru_cache
-def get_llm(api_key: Optional[str] = None) -> ChatOpenAI:
+def get_llm(api_key: str | None = None) -> ChatOpenAI:
     """Get a configured LLM instance.
 
     Args:

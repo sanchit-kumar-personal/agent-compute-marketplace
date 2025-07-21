@@ -1,8 +1,73 @@
 # 🧠 Agent Compute Marketplace (AgentCloud)
 
+[![CI](https://github.com/yourusername/agent-compute-marketplace/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/agent-compute-marketplace/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green.svg)](https://fastapi.tiangolo.com)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+
 An AI-powered sandbox where autonomous agents negotiate cloud compute (GPUs, CPUs) and settle transactions using real-world payment rails (Stripe, PayPal, crypto). The project demonstrates agent-to-agent markets, AI-driven negotiation, secure payments, and audit-grade logging—ideal proof-of-work for infra / AI / fintech recruiters.
 
 ![dashboard](docs/dashboard.png)
+
+---
+
+## 🚀 Quick Start
+
+### Local Docker Development
+
+1. **Clone and setup:**
+
+```bash
+git clone https://github.com/yourusername/agent-compute-marketplace.git
+cd agent-compute-marketplace
+cp env.example .env
+# Edit .env with your API keys
+```
+
+2. **Start all services:**
+
+```bash
+make docker-up
+```
+
+3. **Access the application:**
+
+- **API:** http://localhost:8000
+- **Dashboard:** http://localhost:8501
+- **Grafana:** http://localhost:3000 (admin/admin)
+- **Jaeger:** http://localhost:16686
+- **Prometheus:** http://localhost:9090
+
+### Local Development
+
+1. **Install dependencies:**
+
+```bash
+make install
+```
+
+2. **Setup database:**
+
+```bash
+make migrate
+```
+
+3. **Start development server:**
+
+```bash
+make dev
+```
+
+### Available Commands
+
+Run `make help` to see all available commands:
+
+- `make dev` - Start development server
+- `make test` - Run tests with coverage
+- `make lint` - Run linting and formatting
+- `make docker-up` - Start all services
+- `make docker-down` - Stop all services
 
 ---
 
@@ -55,68 +120,55 @@ agent-compute-marketplace/
 └── README.md
 ```
 
-## Setup
+## Environment Configuration
 
-1. Clone the repository:
+The project uses environment variables for configuration. All developers use the same approach:
 
-```bash
-git clone https://github.com/yourusername/agent-compute-marketplace.git
-cd agent-compute-marketplace
-```
-
-2. Install dependencies:
+### Setup Environment Variables
 
 ```bash
-pip install -r requirements.txt
+# Copy the example environment file
+cp env.example .env
+
+# Edit .env to add your actual API keys
+# The file contains sensible defaults for Docker networking
 ```
 
-3. Set up environment variables:
+### Key Environment Variables
 
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
+The environment file includes configuration for:
 
-4. Initialize the database:
+- **Database**: Uses Docker networking (`db:5432`) when running with Docker Compose
+- **Observability**: Configured for Docker service names (`jaeger:4317`, `prometheus:9090`)
+- **External APIs**: Add your own API keys for OpenAI, Stripe, PayPal
+- **Application Settings**: Debug mode, service names, etc.
 
-```bash
-alembic upgrade head
-```
+### Docker vs Local Development
 
-5. Run the development server:
+The `env.example` file is pre-configured for Docker development. When you run `docker-compose up`, the services automatically connect using Docker's internal networking.
 
-```bash
-uvicorn main:app --reload
-```
+For local development (running services directly on your host), you would need to update the URLs to use `localhost` instead of service names.
 
-6. Start the Streamlit dashboard:
-
-```bash
-cd dashboard
-streamlit run streamlit_app.py
-```
-
-The dashboard will be available at http://localhost:8501
-
-## Development
-
-- Run tests: `pytest`
-- Format code: `black .`
-- Lint code: `ruff .`
-- Create database migration: `alembic revision --autogenerate -m "description"`
+## 🐳 Docker Commands
 
 ## Environment Variables
 
-Required environment variables in `.env`:
+Create a `.env` file from the `env.example` template:
+
+```bash
+cp env.example .env
+```
+
+Required environment variables:
 
 - `DATABASE_URL`: Database connection string
-- `STRIPE_KEY`: Stripe API key
-- `PAYPAL_BASE`: PayPal API base URL (defaults to sandbox URL)
-- `PAYPAL_CLIENT_ID`: PayPal client ID from sandbox developer dashboard
-- `PAYPAL_SECRET`: PayPal secret key from sandbox developer dashboard
+- `STRIPE_API_KEY`: Stripe API key (use test keys for development)
+- `STRIPE_WEBHOOK_SECRET`: Stripe webhook secret
+- `PAYPAL_CLIENT_ID`: PayPal client ID from sandbox
+- `PAYPAL_SECRET`: PayPal secret key from sandbox
 - `OPENAI_API_KEY`: OpenAI API key
 
-**Database Strategy**: SQLite remains valid for quick hacking; set `DATABASE_URL` to switch.
+**Database Strategy**: The application supports both SQLite (development) and PostgreSQL (production).
 
 ## API Documentation
 
@@ -196,12 +248,12 @@ The Streamlit dashboard provides real-time monitoring of agent negotiations:
 
 ## Tracing
 
-The application uses OpenTelemetry with Jaeger for distributed tracing. To use tracing:
+The application uses OpenTelemetry with Jaeger for distributed tracing. All services are included in the main docker-compose.yml.
 
-1. Start the Jaeger container:
+1. Start all services (including Jaeger):
 
 ```bash
-docker compose -f docker-compose.tracing.yml up -d
+make docker-up
 ```
 
 2. Run the application normally. All FastAPI endpoints will be automatically traced.
@@ -282,9 +334,10 @@ The endpoint also allows access from private networks (10.x.x.x, 192.168.x.x, 17
 
 ### Running Prometheus + Grafana
 
+All monitoring services are included in the main docker-compose.yml:
+
 ```bash
-docker compose -f docker-compose.metrics.yml up -d  # Prometheus + Grafana
-uvicorn main:app --reload  # run the app
+make docker-up  # Starts all services including Prometheus + Grafana
 # Open localhost:9090 -> verify agentcloud_quotes_total
 # Grafana default creds admin/admin -> import dashboard ID 11159 (FastAPI metrics)
 ```

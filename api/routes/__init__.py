@@ -3,6 +3,7 @@ API routes initialization
 """
 
 from fastapi import APIRouter
+
 from .quotes import router as quotes_router
 
 router = APIRouter()

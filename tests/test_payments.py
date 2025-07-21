@@ -2,17 +2,19 @@
 Tests for payment functionality
 """
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from db.models import (
-    Quote,
-    Transaction,
-    QuoteStatus,
-    TransactionStatus,
-    PaymentProvider,
-)
-from datetime import datetime, UTC
 import stripe
+
+from db.models import (
+    PaymentProvider,
+    Quote,
+    QuoteStatus,
+    Transaction,
+    TransactionStatus,
+)
 
 
 @pytest.fixture
@@ -91,8 +93,9 @@ async def test_webhook_updates_statuses(client, test_db_session):
     mock_event.data.object.status = "succeeded"
 
     # Call webhook endpoint
-    with patch("api.webhooks.stripe") as mock_stripe, patch(
-        "api.webhooks.webhook_secret", "whsec_test_dummy"
+    with (
+        patch("api.webhooks.stripe") as mock_stripe,
+        patch("api.webhooks.webhook_secret", "whsec_test_dummy"),
     ):
         mock_stripe.Webhook.construct_event.return_value = mock_event
         mock_stripe.error.SignatureVerificationError = (
@@ -150,8 +153,9 @@ async def test_payment_failed_webhook(client, test_db_session):
     mock_event.data.object.id = "pi_mock_failed"
     mock_event.data.object.status = "failed"
 
-    with patch("api.webhooks.stripe") as mock_stripe, patch(
-        "api.webhooks.webhook_secret", "whsec_test_dummy"
+    with (
+        patch("api.webhooks.stripe") as mock_stripe,
+        patch("api.webhooks.webhook_secret", "whsec_test_dummy"),
     ):
         mock_stripe.Webhook.construct_event.return_value = mock_event
         mock_stripe.error.SignatureVerificationError = (

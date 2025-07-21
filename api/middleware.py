@@ -1,5 +1,6 @@
-from fastapi import Request
 import structlog
+from fastapi import Request
+
 from core.logging import BusinessEvents
 
 

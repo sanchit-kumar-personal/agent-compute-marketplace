@@ -1,9 +1,10 @@
-from contextlib import contextmanager, asynccontextmanager
-from typing import Generator, AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
+from contextlib import asynccontextmanager, contextmanager
+
 from fastapi import Depends
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from core.dependencies import get_settings
@@ -88,6 +89,9 @@ AsyncSessionLocal = async_sessionmaker(expire_on_commit=False)
 
 
 def get_db():
+    settings = Settings()
+    engine = get_engine(settings)
+    SessionLocal.configure(bind=engine)
     db = SessionLocal()
     try:
         yield db
@@ -97,6 +101,9 @@ def get_db():
 
 def get_db_dependency():
     """Get database session and store in request state for middleware reuse."""
+    settings = Settings()
+    engine = get_engine(settings)
+    SessionLocal.configure(bind=engine)
     db = SessionLocal()
     try:
         # Store in request state so middleware can reuse it
