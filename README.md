@@ -5,8 +5,11 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green.svg)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+[![Version](https://img.shields.io/badge/version-v1.0.0-success.svg)](https://github.com/sanchit-kumar-personal/agent-compute-marketplace/releases)
 
 > **🎬 Demo Ready!** AI-powered marketplace where autonomous agents negotiate cloud compute resources and settle payments using real-world payment rails (Stripe, PayPal). Complete with observability stack, audit trails, and 90%+ test coverage.
+>
+> **🚀 v1.0.0 Production Ready** - Fully tested, documented, and ready for deployment.
 
 ## ✨ What This Demonstrates
 
@@ -146,50 +149,51 @@ agent-compute-marketplace/
 
 ## 🧪 Testing & Quality
 
-- **88% Test Coverage** - Comprehensive pytest suite
+- **90%+ Test Coverage** - Comprehensive pytest suite
 - **CI/CD Pipeline** - GitHub Actions with PostgreSQL
 - **Code Quality** - Ruff linting + Black formatting
 - **Type Safety** - Full mypy compliance
 - **Docker Ready** - Multi-stage builds with health checks
 
 ```bash
-# Run full test suite
+# Run full test suite with coverage
 make test
 
 # Check code quality
 make lint
 
-# View coverage report
-make test-coverage
+# Format code
+make format
 ```
 
 ## 🌐 Environment Setup
 
-1. **Copy environment template:**
+**1. Copy environment template:**
 
-   ```bash
-   cp env.example .env
-   ```
+```bash
+cp env.example .env
+```
 
-2. **Add your API keys:**
+**2. Add your API keys:**
 
-   ```bash
-   # Required for AI negotiations
-   OPENAI_API_KEY=sk-your-key-here
+```bash
+# Required for AI negotiations
+OPENAI_API_KEY=sk-your-key-here
 
-   # Required for payments (use test keys)
-   STRIPE_API_KEY=sk_test_your-key-here
-   STRIPE_WEBHOOK_SECRET=whsec_your-secret-here
+# Required for payments (use test keys)
+STRIPE_API_KEY=sk_test_your-key-here
+STRIPE_WEBHOOK_SECRET=whsec_your-secret-here
 
-   # Required for PayPal (sandbox)
-   PAYPAL_CLIENT_ID=your-sandbox-client-id
-   PAYPAL_SECRET=your-sandbox-secret
-   ```
+# Required for PayPal (sandbox)
+PAYPAL_CLIENT_ID=your-sandbox-client-id
+PAYPAL_SECRET=your-sandbox-secret
+```
 
-3. **Start services:**
-   ```bash
-   docker compose up -d
-   ```
+**3. Start services:**
+
+```bash
+docker compose up -d
+```
 
 ## 📈 Monitoring & Observability
 
