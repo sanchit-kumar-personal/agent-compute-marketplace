@@ -20,6 +20,9 @@ WORKDIR /app
 # Copy Poetry files
 COPY pyproject.toml poetry.lock* ./
 
+# Regenerate lock file to sync with pyproject.toml changes
+RUN poetry lock
+
 # Install Python dependencies
 RUN poetry config virtualenvs.create false \
     && poetry install --only=main --no-root \
