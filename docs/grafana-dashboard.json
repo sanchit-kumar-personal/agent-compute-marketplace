@@ -1,0 +1,83 @@
+{
+  "id": null,
+  "title": "Agent Compute Marketplace - Overview",
+  "tags": ["agentcloud", "marketplace"],
+  "timezone": "browser",
+  "panels": [
+      {
+        "id": 1,
+        "title": "Total Quotes Created",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "agentcloud_quotes_total",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "red", "value": 80}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Negotiation Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, agentcloud_negotiation_latency_seconds_bucket)",
+            "refId": "A",
+            "legendFormat": "95th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.50, agentcloud_negotiation_latency_seconds_bucket)",
+            "refId": "B",
+            "legendFormat": "50th percentile"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Payment Success Rate by Provider",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(agentcloud_payment_success_total[5m])",
+            "refId": "A",
+            "legendFormat": "{{provider}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Quote Creation Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(agentcloud_quotes_total[5m])",
+            "refId": "A",
+            "legendFormat": "Quotes Created/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s",
+    "version": 1
+} 

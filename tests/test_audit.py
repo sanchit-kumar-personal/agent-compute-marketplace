@@ -14,7 +14,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from unittest.mock import MagicMock
 
+from core.audit import determine_action, AuditMiddleware
 from db.models import (
     AuditAction,
     AuditLog,
@@ -67,6 +69,217 @@ def db_session():
     finally:
         db.close()
         Base.metadata.drop_all(bind=engine)
+
+
+def test_determine_action_quote_created():
+    """Test determining audit action for quote creation."""
+    request = MagicMock()
+    request.method = "POST"
+    request.url.path = "/api/v1/quotes/request"
+
+    response = MagicMock()
+    response.status_code = 201
+
+    action = determine_action(request, response)
+    assert action == AuditAction.quote_created
+
+
+def test_determine_action_quote_negotiated():
+    """Test determining audit action for quote negotiation."""
+    request = MagicMock()
+    request.method = "POST"
+    request.url.path = "/api/v1/quotes/123/negotiate"
+
+    response = MagicMock()
+    response.status_code = 200
+
+    action = determine_action(request, response)
+    assert action == AuditAction.negotiation_turn
+
+
+def test_determine_action_payment_succeeded():
+    """Test determining audit action for successful payment."""
+    request = MagicMock()
+    request.method = "POST"
+    request.url.path = "/api/v1/quotes/123/payments"
+
+    response = MagicMock()
+    response.status_code = 200
+
+    action = determine_action(request, response)
+    assert action == AuditAction.payment_succeeded
+
+
+def test_determine_action_payment_failed():
+    """Test determining audit action for failed payment."""
+    request = MagicMock()
+    request.method = "POST"
+    request.url.path = "/api/v1/quotes/123/payments"
+
+    response = MagicMock()
+    response.status_code = 402
+
+    action = determine_action(request, response)
+    assert action == AuditAction.payment_failed
+
+
+def test_determine_action_for_other_paths():
+    """Test determining audit action for other API paths."""
+    request = MagicMock()
+    request.method = "GET"
+    request.url.path = "/api/v1/quotes/123"
+
+    response = MagicMock()
+    response.status_code = 200
+
+    action = determine_action(request, response)
+    assert action == AuditAction.quote_created  # default fallback
+
+
+def test_determine_action_different_methods():
+    """Test audit action determination for different HTTP methods."""
+    methods = ["GET", "POST", "PUT", "DELETE"]
+
+    for method in methods:
+        request = MagicMock()
+        request.method = method
+        request.url.path = "/api/v1/quotes/123/negotiate"
+
+        response = MagicMock()
+        response.status_code = 200
+
+        action = determine_action(request, response)
+        assert isinstance(action, AuditAction)
+        assert action == AuditAction.negotiation_turn
+
+
+@pytest.mark.asyncio
+async def test_audit_middleware_initialization():
+    """Test audit middleware initialization."""
+    app = MagicMock()
+    middleware = AuditMiddleware(app)
+
+    assert middleware.app == app
+
+
+@pytest.mark.asyncio
+async def test_audit_middleware_dispatch():
+    """Test audit middleware request dispatch."""
+    app = MagicMock()
+    middleware = AuditMiddleware(app)
+
+    # Mock request
+    request = MagicMock()
+    request.method = "POST"
+    request.url.path = "/api/v1/quotes"
+    request.state = MagicMock()
+    request.state.db = None  # No DB session
+
+    # Mock call_next function
+    async def mock_call_next(request):
+        response = MagicMock()
+        response.status_code = 200
+        return response
+
+    # Test dispatch - should not raise errors even without DB
+    response = await middleware.dispatch(request, mock_call_next)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_audit_middleware_with_exception():
+    """Test audit middleware handles exceptions properly."""
+    app = MagicMock()
+    middleware = AuditMiddleware(app)
+
+    request = MagicMock()
+    request.method = "POST"
+    request.url.path = "/api/v1/quotes/request"
+
+    # Mock call_next that raises an exception
+    async def mock_call_next_error(request):
+        raise Exception("Something went wrong")
+
+    # Test that exception is re-raised
+    with pytest.raises(Exception, match="Something went wrong"):
+        await middleware.dispatch(request, mock_call_next_error)
+
+
+def test_audit_different_status_codes():
+    """Test audit action determination for different response status codes."""
+    request = MagicMock()
+    request.method = "POST"
+    request.url.path = "/api/v1/quotes/123/payments"
+
+    # Test success
+    response_success = MagicMock()
+    response_success.status_code = 200
+    action_success = determine_action(request, response_success)
+    assert action_success == AuditAction.payment_succeeded
+
+    # Test failure
+    response_failure = MagicMock()
+    response_failure.status_code = 402
+    action_failure = determine_action(request, response_failure)
+    assert action_failure == AuditAction.payment_failed
+
+    # Test server error
+    response_error = MagicMock()
+    response_error.status_code = 500
+    action_error = determine_action(request, response_error)
+    assert action_error == AuditAction.payment_failed
+
+
+def test_audit_middleware_paths_coverage():
+    """Test audit middleware handles various API paths correctly."""
+    paths_and_expected_actions = [
+        ("/api/v1/quotes/request", "POST", 201, AuditAction.quote_created),
+        ("/api/v1/quotes/123/negotiate", "POST", 200, AuditAction.negotiation_turn),
+        (
+            "/api/v1/quotes/123/negotiate/auto",
+            "POST",
+            200,
+            AuditAction.negotiation_turn,
+        ),
+        ("/api/v1/quotes/123/payments", "POST", 200, AuditAction.payment_succeeded),
+        (
+            "/api/v1/quotes/123",
+            "GET",
+            200,
+            AuditAction.quote_created,
+        ),  # default fallback
+        ("/api/v1/quotes", "GET", 200, AuditAction.quote_created),  # default fallback
+        ("/healthz", "GET", 200, AuditAction.quote_created),  # default fallback
+    ]
+
+    for path, method, status, expected_action in paths_and_expected_actions:
+        request = MagicMock()
+        request.method = method
+        request.url.path = path
+
+        response = MagicMock()
+        response.status_code = status
+
+        action = determine_action(request, response)
+        assert action == expected_action, f"Failed for {method} {path} -> {status}"
+
+
+def test_audit_action_enum_coverage():
+    """Test that all audit action enum values are properly defined."""
+    # Verify all expected audit actions exist
+    expected_actions = [
+        "quote_created",
+        "negotiation_turn",
+        "quote_accepted",
+        "quote_rejected",
+        "payment_succeeded",
+        "payment_failed",
+    ]
+
+    for action_name in expected_actions:
+        assert hasattr(AuditAction, action_name)
+        action_value = getattr(AuditAction, action_name)
+        assert isinstance(action_value, AuditAction)
 
 
 def test_audit_written(client, db_session):
@@ -318,7 +531,3 @@ def test_audit_log_quote_id_foreign_key(db_session):
     retrieved_audit = db_session.query(AuditLog).filter_by(quote_id=quote.id).first()
     assert retrieved_audit is not None
     assert retrieved_audit.quote_id == quote.id
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

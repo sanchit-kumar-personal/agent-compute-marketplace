@@ -23,8 +23,12 @@ def determine_action(request: Request, response: Response) -> AuditAction:
     path = request.url.path
     if "negotiate" in path:
         return AuditAction.negotiation_turn
-    elif "payment" in path:
-        return AuditAction.payment_succeeded
+    elif "payment" in path or "pay" in path:
+        # Check if payment failed based on status code
+        if response.status_code >= 400:
+            return AuditAction.payment_failed
+        else:
+            return AuditAction.payment_succeeded
     else:
         return AuditAction.quote_created
 
@@ -36,12 +40,12 @@ class AuditMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
 
-        # Only log for 2xx responses from our API prefix
-        if (
-            request.url.path.startswith("/api")
-            and 200 <= response.status_code < 300
-            and "webhook" not in request.url.path  # Skip webhook logging for now
-        ):
+        # Log the request if it's not excluded
+        if request.method in [
+            "POST",
+            "PUT",
+            "DELETE",
+        ] and not request.url.path.startswith("/metrics"):
             try:
                 # grab the route's session if it exists, else skip audit
                 db: Session | None = getattr(request.state, "db", None)

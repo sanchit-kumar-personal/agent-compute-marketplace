@@ -1,3 +1,5 @@
+"""Test cases for logging functionality."""
+
 import os
 import sys
 import tempfile
@@ -5,6 +7,8 @@ import tempfile
 import structlog
 
 from core.logging import BusinessEvents
+
+BASE = "/api/v1"
 
 
 def capture_log_output(func):
@@ -146,7 +150,7 @@ def test_api_request_logging(client):
 
     # Make an API request
     response = client.post(
-        "/quotes/request",
+        f"{BASE}/quotes/request",
         json={
             "buyer_id": "test_buyer",
             "resource_type": "GPU",
@@ -166,7 +170,7 @@ def test_api_request_logging(client):
 
     log_entry = api_logs[0]
     assert log_entry["method"] == "POST"
-    assert "/quotes/request" in log_entry["url"]
+    assert f"{BASE}/quotes/request" in log_entry["url"]
     assert log_entry["level"] == "info"
     assert "timestamp" in log_entry
 

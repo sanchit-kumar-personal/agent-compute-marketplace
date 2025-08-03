@@ -1,16 +1,28 @@
+import structlog
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+log = structlog.get_logger(__name__)
 
 
 def init_tracer(app_name: str = "agentcloud"):
     """Initialize OpenTelemetry tracer with OTLP exporter"""
     provider = TracerProvider(resource=Resource.create({"service.name": app_name}))
 
-    # OTLP exporter - defaults to localhost:4317 for gRPC
-    otlp_exporter = OTLPSpanExporter()
+    # Attempt to create OTLP exporter (defaults to localhost:4317). If this
+    # fails (e.g. during local tests without Jaeger), gracefully fall back to a
+    # no-op console exporter so the tracer still works but doesn't raise
+    # background logging errors.
+    try:
+        otlp_exporter = OTLPSpanExporter()
+    except Exception as exc:  # pragma: no cover – only hit when Jaeger absent
+        log.warning("OTLP exporter unavailable, tracing disabled", error=str(exc))
+        otlp_exporter = ConsoleSpanExporter()  # writes spans to stdout
+
     provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
     trace.set_tracer_provider(provider)

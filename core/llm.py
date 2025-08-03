@@ -24,7 +24,7 @@ def get_llm(api_key: str | None = None) -> ChatOpenAI:
         )
 
     return ChatOpenAI(
-        model_name="gpt-4",  # Using standard model name
+        model_name="gpt-4o-mini",  # Cost-optimized for structured negotiation tasks
         temperature=0.2,
         openai_api_key=api_key,
     )
