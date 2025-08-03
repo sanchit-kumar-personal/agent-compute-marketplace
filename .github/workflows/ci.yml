@@ -50,6 +50,9 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
 
+      - name: Regenerate lock file for updated dependencies
+        run: poetry lock
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
@@ -60,6 +63,9 @@ jobs:
       - name: Lint with ruff
         run: |
           poetry run ruff check .
+
+      - name: Update black to latest version
+        run: poetry update black
 
       - name: Check formatting with black
         run: |

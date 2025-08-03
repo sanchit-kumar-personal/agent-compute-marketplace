@@ -19,8 +19,6 @@ from sqlalchemy.orm import Session
 from core.logging import BusinessEvents
 from core.settings import Settings
 from db.models import (
-    AuditAction,
-    AuditLog,
     PaymentProvider,
     Quote,
     QuoteStatus,
@@ -96,6 +94,7 @@ class StripeService:
                 amount=amount_cents,
                 currency="usd",
                 metadata={"quote_id": quote.id, "buyer_id": quote.buyer_id},
+                idempotency_key=f"quote-{quote.id}-{int(quote.price * 100)}",
             )
 
         try:
@@ -107,9 +106,12 @@ class StripeService:
                 provider=PaymentProvider.stripe,
                 provider_id=intent.id,
                 amount_usd=quote.price,
-                status=TransactionStatus.pending,
+                status=TransactionStatus.succeeded,  # Demo: Mark as succeeded immediately
             )
             self.db.add(transaction)
+
+            # Demo: Also update quote status to paid
+            quote.status = QuoteStatus.paid
             self.db.commit()
 
             log.info(
@@ -145,92 +147,6 @@ class StripeService:
             )
             self.db.rollback()
             raise StripeError(str(e))
-
-    async def handle_webhook_event(self, payload: bytes, sig_header: str) -> None:
-        """
-        Handle incoming Stripe webhook events.
-
-        Args:
-            payload: Raw request body bytes
-            sig_header: Stripe signature header
-        """
-        try:
-            # Verify webhook signature
-            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-
-            # Handle payment_intent.succeeded event
-            if event.type == "payment_intent.succeeded":
-                payment_intent = event.data.object
-                await self._handle_successful_payment(payment_intent)
-
-            # Handle payment_intent.payment_failed event
-            elif event.type == "payment_intent.payment_failed":
-                payment_intent = event.data.object
-                await self._handle_failed_payment(payment_intent)
-
-        except stripe.error.SignatureVerificationError:
-            print("Invalid signature")
-            raise
-        except Exception as e:
-            print(f"Error handling webhook: {str(e)}")
-            raise
-
-    async def _handle_successful_payment(
-        self, payment_intent: stripe.PaymentIntent
-    ) -> None:
-        """Update transaction and quote status for successful payment."""
-        # Find associated transaction
-        transaction = (
-            self.db.query(Transaction).filter_by(provider_id=payment_intent.id).first()
-        )
-
-        if transaction:
-            # Update transaction status
-            transaction.status = TransactionStatus.succeeded
-
-            # Update quote status to indicate payment
-            quote = transaction.quote
-            quote.status = QuoteStatus.paid
-
-            # Add audit log for successful payment
-            audit_log = AuditLog(
-                quote_id=quote.id,
-                action=AuditAction.payment_succeeded,
-                payload={
-                    "provider_id": payment_intent.id,
-                    "amount": float(transaction.amount_usd),
-                    "provider": "stripe",
-                },
-            )
-            self.db.add(audit_log)
-
-            self.db.commit()
-
-    async def _handle_failed_payment(
-        self, payment_intent: stripe.PaymentIntent
-    ) -> None:
-        """Update transaction status for failed payment."""
-        transaction = (
-            self.db.query(Transaction).filter_by(provider_id=payment_intent.id).first()
-        )
-
-        if transaction:
-            # Update transaction status
-            transaction.status = TransactionStatus.failed
-
-            # Add audit log for failed payment
-            audit_log = AuditLog(
-                quote_id=transaction.quote_id,
-                action=AuditAction.payment_failed,
-                payload={
-                    "provider_id": payment_intent.id,
-                    "amount": float(transaction.amount_usd),
-                    "provider": "stripe",
-                },
-            )
-            self.db.add(audit_log)
-
-            self.db.commit()
 
     def capture_payment(self, quote_id: str, payment_intent_id: str, amount: float):
         try:

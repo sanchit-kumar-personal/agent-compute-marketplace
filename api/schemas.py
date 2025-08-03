@@ -5,7 +5,7 @@ This module defines Pydantic models for request/response validation.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -81,5 +81,26 @@ class Transaction(BaseModel):
     amount_usd: float
     status: TransactionStatus
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaymentResponse(BaseModel):
+    """Schema for payment processing responses."""
+
+    provider: str
+    transaction_id: Optional[int] = None
+    amount: float
+
+    # Stripe-specific fields
+    client_secret: Optional[str] = None
+    payment_intent_id: Optional[str] = None
+
+    # PayPal-specific fields
+    capture_id: Optional[str] = None
+    status: Optional[str] = None
+    order_id: Optional[str] = None
+    approval_url: Optional[str] = None
+    note: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

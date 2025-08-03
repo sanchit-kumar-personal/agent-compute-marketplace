@@ -91,9 +91,25 @@ def mock_llm(monkeypatch):
 
                 max_price = float(re.search(r"<= (\d+\.?\d*)", system_msg).group(1))
                 price = data["seller_price"]
-                response = (
-                    "accept" if price <= max_price else str(price * 0.8)
-                )  # Counter with 80% of price
+
+                # Return structured JSON response matching BuyerReply schema
+                if price <= max_price:
+                    response = json.dumps(
+                        {
+                            "action": "accept",
+                            "price": None,
+                            "reason": "Price is within budget",
+                        }
+                    )
+                else:
+                    counter_price = round(price * 0.8, 2)
+                    response = json.dumps(
+                        {
+                            "action": "counter_offer",
+                            "price": counter_price,
+                            "reason": f"Counter-offering {counter_price}",
+                        }
+                    )
                 return OpenAIResponse(response)
 
             # If this is a seller quote (has resource_type)
@@ -105,9 +121,22 @@ def mock_llm(monkeypatch):
                 }
                 base_price = base_prices.get(data["resource_type"].upper(), 1.0)
                 price = base_price * data["duration_hours"]
-                return OpenAIResponse(str(price))
 
-            return OpenAIResponse("10.0")  # Fallback response
+                # Return structured JSON response matching SellerReply schema
+                response = json.dumps(
+                    {
+                        "action": "counter_offer",
+                        "price": price,
+                        "reason": f"Base pricing for {data['resource_type']}",
+                    }
+                )
+                return OpenAIResponse(response)
+
+            # Fallback response
+            response = json.dumps(
+                {"action": "counter_offer", "price": 10.0, "reason": "Fallback pricing"}
+            )
+            return OpenAIResponse(response)
 
     monkeypatch.setattr("langchain_openai.ChatOpenAI", DummyChatOpenAI)
     monkeypatch.setattr("openai.AsyncOpenAI", DummyAsyncOpenAI)
@@ -189,6 +218,46 @@ def test_db_engine(mock_settings):
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
+
+    # Add test compute resources to the shared database
+    from sqlalchemy.orm import sessionmaker
+    from db.models import ComputeResource
+
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = SessionLocal()
+
+    test_resources = [
+        ComputeResource(
+            type="GPU",
+            specs='{"memory": "16GB", "cores": 8}',
+            status="available",
+            price_per_hour=2.5,
+        ),
+        ComputeResource(
+            type="GPU",
+            specs='{"memory": "32GB", "cores": 16}',
+            status="available",
+            price_per_hour=5.0,
+        ),
+        ComputeResource(
+            type="CPU",
+            specs='{"cores": 4, "memory": "8GB"}',
+            status="available",
+            price_per_hour=0.8,
+        ),
+        ComputeResource(
+            type="TPU",
+            specs='{"version": "v4", "memory": "64GB"}',
+            status="available",
+            price_per_hour=6.0,
+        ),
+    ]
+
+    for resource in test_resources:
+        session.add(resource)
+    session.commit()
+    session.close()
+
     yield engine
     Base.metadata.drop_all(engine)
     engine.dispose()
@@ -196,19 +265,65 @@ def test_db_engine(mock_settings):
 
 @pytest.fixture
 def test_db_session(test_db_engine):
-    """Create a test database session."""
-    TestingSessionLocal = sessionmaker(
-        autocommit=False, autoflush=False, bind=test_db_engine
-    )
-    session = TestingSessionLocal()
+    """Create test database session using the shared engine."""
+    from sqlalchemy.orm import sessionmaker
+
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_db_engine)
+    session = SessionLocal()
+
     try:
         yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
     finally:
         session.close()
+
+
+@pytest.fixture
+def test_compute_resources(test_db_session):
+    """Create test ComputeResource records for tests."""
+    from db.models import ComputeResource
+    from datetime import UTC, datetime
+
+    # Create test resources
+    resources = []
+
+    # GPU resources (10 units)
+    for i in range(10):
+        gpu = ComputeResource(
+            type="GPU",
+            specs='{"gpu_model": "NVIDIA A100", "memory_gb": 80}',
+            price_per_hour=2.5,
+            status="available",
+            created_at=datetime.now(UTC),
+        )
+        resources.append(gpu)
+        test_db_session.add(gpu)
+
+    # CPU resources (50 units)
+    for i in range(50):
+        cpu = ComputeResource(
+            type="CPU",
+            specs='{"cpu_cores": 16, "memory_gb": 64}',
+            price_per_hour=0.8,
+            status="available",
+            created_at=datetime.now(UTC),
+        )
+        resources.append(cpu)
+        test_db_session.add(cpu)
+
+    # TPU resources (5 units)
+    for i in range(5):
+        tpu = ComputeResource(
+            type="TPU",
+            specs='{"tpu_model": "TPU v4", "memory_gb": 128}',
+            price_per_hour=6.0,
+            status="available",
+            created_at=datetime.now(UTC),
+        )
+        resources.append(tpu)
+        test_db_session.add(tpu)
+
+    test_db_session.commit()
+    return resources
 
 
 @pytest.fixture

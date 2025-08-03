@@ -43,14 +43,20 @@ services:
 
   dashboard:
     build: .
-    command: poetry run streamlit run dashboard/streamlit_app.py --server.port=8501 --server.address=0.0.0.0
+    command: /usr/local/bin/streamlit run dashboard/streamlit_app.py --server.port=8501 --server.address=0.0.0.0
     env_file: .env
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - '8501:8501'
     volumes:
       - .:/app
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:8501 || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   # Metrics services (integrated for observability)
@@ -66,10 +72,14 @@ services:
     image: grafana/grafana:10.4.0
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/agentcloud-overview.json
     ports:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./docs/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/agentcloud-overview.json:ro
+      - ./docs/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./docs/grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
     restart: unless-stopped
 
   # Tracing services (integrated for observability)

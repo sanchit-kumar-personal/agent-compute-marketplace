@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "agent-compute-marketplace"
-version = "0.1.0"
+version = "1.0.0"
 description = "An AI-powered sandbox where autonomous agents negotiate cloud compute and settle transactions"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["sanchit Kumar <sanchitkumar.personal@gmail.com>"]
 readme = "README.md"
 package-mode = false
 
@@ -41,7 +41,7 @@ prometheus-fastapi-instrumentator = "^7.0.0"
 mako = "^1.3.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^23.0.0"
+black = "^25.0.0"
 pytest = "^7.0.0"
 pytest-asyncio = "^0.21.0"
 pytest-cov = "^4.0.0"

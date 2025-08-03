@@ -42,7 +42,9 @@ class ComputeResource(Base):
     type = Column(String(50))  # e.g., "GPU", "CPU"
     specs = Column(String(255))  # JSON string of specifications
     price_per_hour = Column(Float)
-    status = Column(String(20))  # e.g., "available", "reserved"
+    status = Column(
+        String(20), default="available"
+    )  # e.g., "available", "reserved", "allocated"
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
@@ -146,6 +148,24 @@ class Quote(Base):
 
     def __repr__(self):
         return f"<Quote(id={self.id}, status={self.status})>"
+
+
+class Reservation(Base):
+    """Model representing resource reservations."""
+
+    __tablename__ = "reservations"
+
+    id = Column(Integer, primary_key=True)
+    quote_id = Column(Integer, ForeignKey("quotes.id"), nullable=False, unique=True)
+    resource_type = Column(String(50), nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    duration_hours = Column(Integer, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    status = Column(String(20), default="active")  # active, expired, cancelled
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
+    def __repr__(self):
+        return f"<Reservation(id={self.id}, quote_id={self.quote_id}, status={self.status})>"
 
 
 class AuditAction(PyEnum):

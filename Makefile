@@ -1,26 +1,26 @@
-.PHONY: dev test lint docker-build docker-up docker-down help install format check-format
+.PHONY: dev test lint format check-format install migrate cleanup-reservations reset-demo docker-up docker-down docker-logs clean dashboard help
 
 # Default target
 help:
 	@echo "Agent Compute Marketplace - Development Commands"
 	@echo ""
-	@echo "Available commands:"
+	@echo "🐳 Docker Commands (Recommended):"
+	@echo "  docker-up        - Start all services (auto-migrates & seeds)"
+	@echo "  docker-down      - Stop all services"
+	@echo "  docker-logs      - View logs from all services"
+	@echo "  reset-demo       - Reset demo environment"
+	@echo "  cleanup-reservations - Clean up expired reservations"
+	@echo ""
+	@echo "💻 Local Development Commands:"
 	@echo "  dev              - Start development server with auto-reload"
 	@echo "  test             - Run pytest with coverage"
 	@echo "  lint             - Run linting with ruff and black"
 	@echo "  format           - Format code with black"
-	@echo "  check-format     - Check code formatting"
+	@echo "  migrate          - Run database migrations (if not using Docker)"
+	@echo ""
+	@echo "🔧 Utility Commands:"
 	@echo "  install          - Install dependencies with Poetry"
-	@echo "  migrate          - Run database migrations"
-	@echo "  docker-build     - Build Docker image"
-	@echo "  docker-up        - Start all services with docker-compose"
-	@echo "  docker-up-core   - Start core services (db, api, dashboard)"
-	@echo "  docker-up-observability - Start observability services (prometheus, grafana, jaeger)"
-	@echo "  docker-up-minimal - Start minimal services (db, api only)"
-	@echo "  docker-down      - Stop all services"
-	@echo "  docker-logs      - View logs from all services"
 	@echo "  clean            - Clean up temporary files"
-	@echo "  setup            - Complete development setup"
 
 # Development
 dev:
@@ -53,10 +53,14 @@ migrate:
 migrate-create:
 	poetry run alembic revision --autogenerate -m "$(MSG)"
 
-# Docker commands
-docker-build:
-	docker build -t agentcloud:$(shell git rev-parse --short HEAD) .
+# v1.0 Database utilities
+reset-demo:
+	./scripts/reset_demo.sh
 
+cleanup-reservations:
+	python3 scripts/cleanup_reservations.py
+
+# Docker commands (simplified)
 docker-up:
 	docker-compose up --build
 
@@ -66,19 +70,6 @@ docker-down:
 docker-logs:
 	docker-compose logs -f
 
-docker-clean:
-	docker-compose down -v --rmi all --remove-orphans
-
-# Service-specific Docker commands
-docker-up-core:
-	docker-compose up --build db api dashboard
-
-docker-up-observability:
-	docker-compose up --build prometheus grafana jaeger
-
-docker-up-minimal:
-	docker-compose up --build db api
-
 # Utility commands
 clean:
 	find . -type f -name "*.pyc" -delete
@@ -87,20 +78,6 @@ clean:
 	find . -type f -name ".coverage" -delete
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 
-setup: install migrate
-	@echo "Development environment setup complete!"
-	@echo "Run 'make dev' to start the development server"
-
-# Production deployment helpers
-prod-build:
-	docker build -t agentcloud:latest .
-
-prod-up:
-	docker-compose -f docker-compose.yml up -d
-
-prod-down:
-	docker-compose -f docker-compose.yml down
-
-# Dashboard
+# Dashboard (for local development)
 dashboard:
 	cd dashboard && poetry run streamlit run streamlit_app.py 

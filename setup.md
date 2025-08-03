@@ -11,7 +11,7 @@
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/agent-compute-marketplace.git
+git clone https://github.com/sanchit-kumar-personal/agent-compute-marketplace.git
 cd agent-compute-marketplace
 ```
 

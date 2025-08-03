@@ -6,13 +6,23 @@ at the /metrics endpoint with optional authentication.
 """
 
 import os
+import structlog
 
 from fastapi import HTTPException, Request, status
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge
 from prometheus_fastapi_instrumentator import Instrumentator
+
+log = structlog.get_logger(__name__)
 
 # Custom metrics
 quotes_total = Counter("agentcloud_quotes_total", "Total number of quotes created")
+
+# Inventory metrics
+inventory_available = Gauge(
+    "agentcloud_inventory_available",
+    "Available compute resources by type",
+    ["resource_type"],
+)
 
 # Domain-specific metrics
 negotiation_latency = Histogram(
@@ -30,14 +40,25 @@ payment_success = Counter(
 
 def negotiation_latency_instrumentor(info):
     """Instrumentation function for tracking negotiation latency."""
-    if info.request.url.path.startswith("/quotes") and info.method == "POST":
+    # Match negotiation endpoints more specifically
+    if info.request.url.path.startswith("/api/v1/quotes/") and (
+        "negotiate" in str(info.request.url.path) or info.method == "POST"
+    ):
         # Use the actual request duration
         negotiation_latency.observe(info.modified_duration)
+        # Optional: Add some logging for debugging
+        log.debug(
+            "Negotiation latency recorded",
+            duration_seconds=info.modified_duration,
+            path=info.request.url.path,
+        )
 
 
 def payment_success_instrumentor(info):
     """Instrumentation function for tracking payment success."""
-    if info.request.url.path.startswith("/quotes") and "payment" in str(
+    # This is now redundant since we added direct metric increments,
+    # but keeping for any endpoints that might use payment in the URL
+    if info.request.url.path.startswith("/api/v1/quotes") and "payment" in str(
         info.request.url
     ):
         if info.response and info.response.status_code < 400:
@@ -59,6 +80,9 @@ def init_metrics(app):
         should_group_status_codes=False,
         should_ignore_untemplated=True,
     )
+
+    # Add default HTTP request metrics - this should generate http_requests_total and http_request_duration_seconds
+    inst.add()  # Default instrumentator without parameters
 
     # Add custom domain-specific metrics
     inst.add(negotiation_latency_instrumentor)
