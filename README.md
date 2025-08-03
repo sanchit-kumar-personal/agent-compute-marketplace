@@ -29,7 +29,7 @@
 git clone https://github.com/sanchit-kumar-personal/agent-compute-marketplace.git
 cd agent-compute-marketplace
 cp env.example .env
-# Add your OpenAI/Stripe/PayPal keys to .env
+# Add your OpenAI/Stripe/PayPal keys to .env (see Environment Setup below)
 
 docker compose up -d --build
 ```
@@ -51,25 +51,54 @@ docker compose up -d --build
 ### Demo Flow (2 minutes)
 
 ```bash
-# 1. Check available compute resources (uses simulated inventory)
+# 🔍 Step 1: Check available compute resources (uses simulated inventory)
 curl http://localhost:8000/api/v1/resources/availability
 
-# 2. Create quote (AI pricing)
+# 💰 Step 2: Create quote (AI pricing)
 curl -X POST http://localhost:8000/api/v1/quotes/request \
   -H "Content-Type: application/json" \
   -d '{"buyer_id":"demo","resource_type":"GPU","duration_hours":4,"buyer_max_price":2.0}'
 
-# 3. Run AI negotiation
+# 🤖 Step 3: Run AI negotiation
 QUOTE_ID=$(curl -s http://localhost:8000/api/v1/quotes/recent | jq -r '.[0].id')
 curl -X POST http://localhost:8000/api/v1/quotes/$QUOTE_ID/negotiate
 
-# 4. Process payment
+# 💳 Step 4: Process payment
 curl -X POST http://localhost:8000/api/v1/quotes/$QUOTE_ID/payments?provider=stripe \
   -H "Content-Type: application/json"
 
-# 5. View audit trail
+# 📊 Step 5: View audit trail
 docker compose exec db psql -U agentcloud -d agentcloud \
   -c "SELECT action, payload FROM audit_logs ORDER BY id DESC LIMIT 3;"
+```
+
+## 🌐 Environment Setup
+
+**1️⃣ Copy environment template:**
+
+```bash
+cp env.example .env
+```
+
+**2️⃣ Add your API keys:**
+
+```bash
+# Required for AI negotiations
+OPENAI_API_KEY=sk-your-key-here
+
+# Required for payments (use test keys)
+STRIPE_API_KEY=sk_test_your-key-here
+STRIPE_WEBHOOK_SECRET=whsec_your-secret-here
+
+# Required for PayPal (sandbox)
+PAYPAL_CLIENT_ID=your-sandbox-client-id
+PAYPAL_SECRET=your-sandbox-secret
+```
+
+**3️⃣ Start services:**
+
+```bash
+docker compose up -d
 ```
 
 ## 📊 Real-Time Dashboard
@@ -138,7 +167,6 @@ agent-compute-marketplace/
 ├── api/                   # FastAPI routes and schemas
 ├── core/                  # Settings, logging, metrics, tracing
 ├── db/                    # SQLAlchemy models and sessions
-├── negotiation/           # FSM engine and prompt templates
 ├── payments/              # Stripe/PayPal service implementations
 ├── dashboard/             # Streamlit real-time dashboard
 ├── tests/                 # 90%+ coverage test suite
@@ -154,46 +182,6 @@ agent-compute-marketplace/
 - **Code Quality** - Ruff linting + Black formatting
 - **Type Safety** - Full mypy compliance
 - **Docker Ready** - Multi-stage builds with health checks
-
-```bash
-# Run full test suite with coverage
-make test
-
-# Check code quality
-make lint
-
-# Format code
-make format
-```
-
-## 🌐 Environment Setup
-
-**1. Copy environment template:**
-
-```bash
-cp env.example .env
-```
-
-**2. Add your API keys:**
-
-```bash
-# Required for AI negotiations
-OPENAI_API_KEY=sk-your-key-here
-
-# Required for payments (use test keys)
-STRIPE_API_KEY=sk_test_your-key-here
-STRIPE_WEBHOOK_SECRET=whsec_your-secret-here
-
-# Required for PayPal (sandbox)
-PAYPAL_CLIENT_ID=your-sandbox-client-id
-PAYPAL_SECRET=your-sandbox-secret
-```
-
-**3. Start services:**
-
-```bash
-docker compose up -d
-```
 
 ## 📈 Monitoring & Observability
 
@@ -223,48 +211,55 @@ ORDER BY created_at;
 
 ### Scenario 1: Successful Negotiation
 
-1. Create quote with buyer max price $2.00
-2. Seller prices at $1.80
-3. Buyer accepts immediately
-4. Payment processed via Stripe
+🎯 **Step 1:** Create quote with buyer max price $2.00  
+💡 **Step 2:** Seller prices at $1.80  
+✅ **Step 3:** Buyer accepts immediately  
+💳 **Step 4:** Payment processed via Stripe
 
 ### Scenario 2: Multi-Round Negotiation
 
-1. Create quote with buyer max price $1.50
-2. Seller starts at $2.20
-3. 3 rounds of counter-offers
-4. Final agreement at $1.75
+🎯 **Step 1:** Create quote with buyer max price $1.50  
+💰 **Step 2:** Seller starts at $2.20  
+🔄 **Step 3:** 3 rounds of counter-offers  
+🤝 **Step 4:** Final agreement at $1.75
 
 ### Scenario 3: Payment Failure Recovery
 
-1. Complete negotiation successfully
-2. Simulate Stripe payment failure
-3. Audit logs capture failure details
-4. Retry with PayPal successfully
+✅ **Step 1:** Complete negotiation successfully  
+❌ **Step 2:** Simulate Stripe payment failure  
+📝 **Step 3:** Audit logs capture failure details  
+🔄 **Step 4:** Retry with PayPal successfully
 
 ---
 
 ## 🚀 Development Commands
 
+### Docker Commands (Recommended)
+
 ```bash
-# Development server with hot reload
-make dev
+make docker-up        # Start all services (auto-migrates & seeds)
+make docker-down      # Stop all services
+make docker-logs      # View logs from all services
+make reset-demo       # Reset demo environment
+```
 
-# Run tests with coverage
-make test
+### Local Development
 
-# Format and lint code
-make lint
+```bash
+make dev              # Start development server with auto-reload
+make test             # Run pytest with coverage
+make lint             # Run linting with ruff and black
+make format           # Format code with black
+make migrate          # Run database migrations
+```
 
-# Database migrations
-make migrate
+### Utility Commands
 
-# Docker development
-make docker-up
-make docker-down
-
-# View all commands
-make help
+```bash
+make install          # Install dependencies with Poetry
+make clean            # Clean up temporary files
+make dashboard        # Launch Streamlit dashboard locally
+make help             # View all available commands
 ```
 
 ## 📝 License
