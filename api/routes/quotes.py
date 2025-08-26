@@ -125,17 +125,21 @@ async def create_quote(
         negotiation_log=[],
     )
 
+    # Snapshot fields needed for audit/logging before commit to avoid
+    # attribute expiration refreshes under concurrent load
+    buyer_id_snapshot = quote.buyer_id
+    resource_type_snapshot = quote.resource_type
+    duration_snapshot = quote.duration_hours
+    buyer_max_price_snapshot = float(quote.buyer_max_price)
+
     # Persist using thread-safe path under SQLite adapter
     if hasattr(db, "sync_session"):
         # Use the underlying sync session to avoid thread switching on SQLite
         db.sync_session.add(quote)
         db.sync_session.commit()
-        db.sync_session.refresh(quote)
     else:
         db.add(quote)
         await db.commit()
-        # Refresh to avoid accessing expired attributes under concurrent load
-        await db.refresh(quote)
 
     # Increment Prometheus counter
     quotes_total.inc()
@@ -146,10 +150,10 @@ async def create_quote(
             quote_id=quote.id,
             action=AuditAction.quote_created,
             payload={
-                "buyer_id": quote.buyer_id,
-                "resource_type": quote.resource_type,
-                "duration_hours": quote.duration_hours,
-                "buyer_max_price": float(quote.buyer_max_price),
+                "buyer_id": buyer_id_snapshot,
+                "resource_type": resource_type_snapshot,
+                "duration_hours": duration_snapshot,
+                "buyer_max_price": buyer_max_price_snapshot,
             },
         )
         if hasattr(db, "sync_session"):
@@ -171,10 +175,10 @@ async def create_quote(
     log.info(
         BusinessEvents.QUOTE_CREATED,
         quote_id=quote.id,
-        buyer_id=quote.buyer_id,
-        resource_type=quote.resource_type,
-        duration_hours=quote.duration_hours,
-        buyer_max_price=quote.buyer_max_price,
+        buyer_id=buyer_id_snapshot,
+        resource_type=resource_type_snapshot,
+        duration_hours=duration_snapshot,
+        buyer_max_price=buyer_max_price_snapshot,
     )
 
     return {
