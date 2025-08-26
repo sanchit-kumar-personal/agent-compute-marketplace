@@ -2,6 +2,7 @@
 Tests for the quote workflow functionality.
 """
 
+import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -190,6 +191,13 @@ def test_list_quotes_endpoint(client, test_db_session):
 
 @pytest.mark.integration
 @pytest.mark.slow
+@pytest.mark.skipif(
+    not (
+        os.environ.get("TEST_DATABASE_URL", "").startswith("postgresql")
+        or os.environ.get("DATABASE_URL", "").startswith("postgresql")
+    ),
+    reason="PostgreSQL required for concurrent integration test",
+)
 def test_concurrent_quote_requests_postgres(postgres_client):
     """Test handling of concurrent quote requests with PostgreSQL."""
     import concurrent.futures
