@@ -137,9 +137,11 @@ async def create_quote(
         # Use the underlying sync session to avoid thread switching on SQLite
         db.sync_session.add(quote)
         db.sync_session.commit()
+        quote_id_value = quote.id
     else:
         db.add(quote)
         await db.commit()
+        quote_id_value = quote.id
 
     # Increment Prometheus counter
     quotes_total.inc()
@@ -147,7 +149,7 @@ async def create_quote(
     # Add audit log (best-effort; don't fail request if audit insert fails)
     try:
         audit_log = AuditLog(
-            quote_id=quote.id,
+            quote_id=quote_id_value,
             action=AuditAction.quote_created,
             payload={
                 "buyer_id": buyer_id_snapshot,
@@ -174,7 +176,7 @@ async def create_quote(
 
     log.info(
         BusinessEvents.QUOTE_CREATED,
-        quote_id=quote.id,
+        quote_id=quote_id_value,
         buyer_id=buyer_id_snapshot,
         resource_type=resource_type_snapshot,
         duration_hours=duration_snapshot,
@@ -182,7 +184,7 @@ async def create_quote(
     )
 
     return {
-        "quote_id": quote.id,
+        "quote_id": quote_id_value,
         "status": "pending",
         "message": "Quote request created successfully",
     }
