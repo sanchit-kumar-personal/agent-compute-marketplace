@@ -113,7 +113,6 @@ class BuyerAgent:
             round=len(self.negotiation_history),
         )
         try:
-
             # Build negotiation context
             negotiation_context = self._build_negotiation_context(history, seller_price)
 

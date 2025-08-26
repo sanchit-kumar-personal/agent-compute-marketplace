@@ -12,8 +12,10 @@ import random
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from db.session import get_db
+from db.session import get_async_db
 from db.models import Quote
 import structlog
 from core.metrics import inventory_available
@@ -74,14 +76,15 @@ BASE_RESOURCE_CONFIG = {
 }
 
 
-async def _calculate_demand_multipliers(db: Session) -> Dict[str, float]:
+async def _calculate_demand_multipliers(db: AsyncSession) -> Dict[str, float]:
     """Calculate demand multipliers based on recent quote activity."""
     # Get quotes from last 24 hours
-    recent_quotes = (
-        db.query(Quote)
-        .filter(Quote.created_at >= datetime.now(UTC) - timedelta(hours=24))
-        .all()
+    result = await db.execute(
+        select(Quote).filter(
+            Quote.created_at >= datetime.now(UTC) - timedelta(hours=24)
+        )
     )
+    recent_quotes = result.scalars().all()
 
     # Count by resource type
     demand_counts = {}
@@ -120,7 +123,7 @@ def get_current_availability(
 async def get_resource_availability(
     resource_type: Optional[str] = Query(None),
     region: str = Query("us-east-1"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Get current resource availability and pricing."""
     # Calculate demand multipliers based on recent quote activity

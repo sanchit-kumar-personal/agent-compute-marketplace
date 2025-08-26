@@ -6,10 +6,13 @@ Every quote/payment action is recorded in the audit_logs table.
 """
 
 from collections.abc import Callable
+import os
 
 import structlog
 from fastapi import Request, Response
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+import inspect
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from db import models
@@ -48,7 +51,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         ] and not request.url.path.startswith("/metrics"):
             try:
                 # grab the route's session if it exists, else skip audit
-                db: Session | None = getattr(request.state, "db", None)
+                db: Session | AsyncSession | None = getattr(request.state, "db", None)
                 if not db:
                     return response
 
@@ -56,21 +59,34 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 if 200 <= response.status_code < 400 and request.url.path.startswith(
                     "/api"
                 ):
-                    db.add(
-                        models.AuditLog(
-                            quote_id=getattr(request.state, "quote_id", None),
-                            action=determine_action(
-                                request, response
-                            ),  # helper keeps previous
-                            payload={
-                                "method": request.method,
-                                "path": str(request.url.path),
-                                "status": response.status_code,
-                                "body": (await request.body()).decode()[:500],
-                            },
-                        )
+                    # Redact body in demo mode
+                    demo_mode = os.getenv("DEMO_MODE", "").lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                    }
+                    body_value = (
+                        "<redacted>"
+                        if demo_mode
+                        else (await request.body()).decode()[:500]
                     )
-                    db.commit()
+
+                    audit_entry = models.AuditLog(
+                        quote_id=getattr(request.state, "quote_id", None),
+                        action=determine_action(request, response),
+                        payload={
+                            "method": request.method,
+                            "path": str(request.url.path),
+                            "status": response.status_code,
+                            "body": body_value,
+                        },
+                    )
+                    db.add(audit_entry)
+                    commit_fn = getattr(db, "commit", None)
+                    if commit_fn is not None and inspect.iscoroutinefunction(commit_fn):
+                        await commit_fn()
+                    elif commit_fn is not None:
+                        commit_fn()
             except Exception as e:
                 log.error("audit.session_failed", path=request.url.path, error=str(e))
 

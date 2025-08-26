@@ -7,7 +7,6 @@ This module handles all Stripe-related payment operations including:
 - Managing payment status updates
 """
 
-import concurrent.futures
 import os
 from typing import Any, Union
 
@@ -15,16 +14,12 @@ import stripe
 import structlog
 import tenacity
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from core.logging import BusinessEvents
 from core.settings import Settings
-from db.models import (
-    PaymentProvider,
-    Quote,
-    QuoteStatus,
-    Transaction,
-    TransactionStatus,
-)
+from db.models import Quote
 
 log = structlog.get_logger(__name__)
 
@@ -38,7 +33,9 @@ class StripeError(Exception):
 
 
 class StripeService:
-    def __init__(self, db: Session, settings: Union[Settings, None] = None):
+    def __init__(
+        self, db: Session | AsyncSession, settings: Union[Settings, None] = None
+    ):
         """
         Initialize StripeService.
 
@@ -98,28 +95,15 @@ class StripeService:
             )
 
         try:
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                intent = pool.submit(_create_intent_sync).result()
-            # Create transaction record
-            transaction = Transaction(
-                quote_id=quote.id,
-                provider=PaymentProvider.stripe,
-                provider_id=intent.id,
-                amount_usd=quote.price,
-                status=TransactionStatus.succeeded,  # Demo: Mark as succeeded immediately
-            )
-            self.db.add(transaction)
-
-            # Demo: Also update quote status to paid
-            quote.status = QuoteStatus.paid
-            self.db.commit()
+            intent = await run_in_threadpool(_create_intent_sync)
+            # Note: DB side effects are handled by the caller (route/service layer)
 
             log.info(
                 BusinessEvents.PAYMENT_SUCCESS,
                 quote_id=quote.id,
                 amount=quote.price,
                 provider="stripe",
-                transaction_id=transaction.id,
+                transaction_id=None,
                 provider_transaction_id=intent.id,
             )
 
@@ -135,7 +119,6 @@ class StripeService:
                 provider="stripe",
                 error=str(e),
             )
-            self.db.rollback()
             raise StripeError(str(e))
         except Exception as e:
             log.error(
@@ -145,7 +128,6 @@ class StripeService:
                 provider="stripe",
                 error=str(e),
             )
-            self.db.rollback()
             raise StripeError(str(e))
 
     def capture_payment(self, quote_id: str, payment_intent_id: str, amount: float):

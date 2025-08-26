@@ -27,6 +27,10 @@ services:
   api:
     build: .
     env_file: .env
+    environment:
+      - DISABLE_TRACING=${DISABLE_TRACING:-1}
+      - METRICS_ENABLED=${METRICS_ENABLED:-true}
+      - DEMO_MODE=${DEMO_MODE:-1}
     depends_on:
       db:
         condition: service_healthy
@@ -45,6 +49,9 @@ services:
     build: .
     command: /usr/local/bin/streamlit run dashboard/streamlit_app.py --server.port=8501 --server.address=0.0.0.0
     env_file: .env
+    environment:
+      - API_BASE=${API_BASE:-http://api:8000}
+      - DEMO_MODE=${DEMO_MODE:-1}
     depends_on:
       api:
         condition: service_healthy

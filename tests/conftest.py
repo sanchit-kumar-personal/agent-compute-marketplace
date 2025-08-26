@@ -329,7 +329,8 @@ def test_compute_resources(test_db_session):
 @pytest.fixture
 def client(mock_settings, test_db_engine):
     """Test client with proper database setup."""
-    from db.session import get_db, reset_engines
+    from db.session import get_db, get_async_db, reset_engines
+    from starlette.concurrency import run_in_threadpool
 
     # Reset engines to ensure clean state
     reset_engines()
@@ -353,6 +354,46 @@ def client(mock_settings, test_db_engine):
     # Override dependencies
     app.dependency_overrides[get_db] = override_get_db
 
+    async def override_get_async_db():
+        # Wrap sync session with async-like adapter for routes expecting AsyncSession
+        db = TestingSessionLocal()
+
+        class AsyncSessionAdapter:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def add(self, instance):
+                return self._inner.add(instance)
+
+            def add_all(self, instances):
+                return self._inner.add_all(instances)
+
+            async def commit(self):
+                await run_in_threadpool(self._inner.commit)
+
+            async def rollback(self):
+                await run_in_threadpool(self._inner.rollback)
+
+            async def refresh(self, instance):
+                await run_in_threadpool(lambda: self._inner.refresh(instance))
+
+            async def get(self, model, ident):
+                return await run_in_threadpool(lambda: self._inner.get(model, ident))
+
+            async def execute(self, statement):
+                return await run_in_threadpool(lambda: self._inner.execute(statement))
+
+            async def close(self):
+                await run_in_threadpool(self._inner.close)
+
+        adapter = AsyncSessionAdapter(db)
+        try:
+            yield adapter
+        finally:
+            await run_in_threadpool(db.close)
+
+    app.dependency_overrides[get_async_db] = override_get_async_db
+
     with patch("core.dependencies._settings", mock_settings):
         with TestClient(app) as test_client:
             yield test_client
@@ -365,7 +406,8 @@ def client(mock_settings, test_db_engine):
 @pytest.fixture
 def postgres_client(postgres_test_settings):
     """Client for PostgreSQL integration tests."""
-    from db.session import get_db, get_engine, reset_engines
+    from db.session import get_db, get_async_db, get_engine, reset_engines
+    from starlette.concurrency import run_in_threadpool
 
     # Reset engines to ensure clean state
     reset_engines()
@@ -393,6 +435,45 @@ def postgres_client(postgres_test_settings):
 
     # Override dependencies
     app.dependency_overrides[get_db] = override_get_db
+
+    async def override_get_async_db():
+        db = TestingSessionLocal()
+
+        class AsyncSessionAdapter:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def add(self, instance):
+                return self._inner.add(instance)
+
+            def add_all(self, instances):
+                return self._inner.add_all(instances)
+
+            async def commit(self):
+                await run_in_threadpool(self._inner.commit)
+
+            async def rollback(self):
+                await run_in_threadpool(self._inner.rollback)
+
+            async def refresh(self, instance):
+                await run_in_threadpool(lambda: self._inner.refresh(instance))
+
+            async def get(self, model, ident):
+                return await run_in_threadpool(lambda: self._inner.get(model, ident))
+
+            async def execute(self, statement):
+                return await run_in_threadpool(lambda: self._inner.execute(statement))
+
+            async def close(self):
+                await run_in_threadpool(self._inner.close)
+
+        adapter = AsyncSessionAdapter(db)
+        try:
+            yield adapter
+        finally:
+            await run_in_threadpool(db.close)
+
+    app.dependency_overrides[get_async_db] = override_get_async_db
 
     with patch("core.dependencies._settings", postgres_test_settings):
         with TestClient(app) as test_client:

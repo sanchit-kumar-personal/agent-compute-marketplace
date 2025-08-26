@@ -16,8 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
-from db.models import ComputeResource  # noqa: E402
+from db.models import ComputeResource, Quote, QuoteStatus  # noqa: E402
 from core.dependencies import get_settings, init_settings  # noqa: E402
+from agents.negotiation_engine import NegotiationEngine  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
 
 def wait_for_db(max_attempts=30, delay=2):
@@ -127,6 +129,32 @@ def seed_initial_data():
         print("   - 500 CPU units")
         print("   - 50 TPU units")
 
+        # Optional: seed demo quotes
+        if os.getenv("DEMO_MODE", "").lower() in {"1", "true", "yes"}:
+            print("🌱 Seeding demo quotes...")
+            demo_quotes = [
+                Quote(
+                    buyer_id="demo_buyer_1",
+                    resource_type="GPU",
+                    duration_hours=4,
+                    buyer_max_price=15.0,
+                    price=0.0,
+                    status=QuoteStatus.pending,
+                ),
+                Quote(
+                    buyer_id="demo_buyer_2",
+                    resource_type="CPU",
+                    duration_hours=8,
+                    buyer_max_price=8.0,
+                    price=0.0,
+                    status=QuoteStatus.pending,
+                ),
+            ]
+            db.add_all(demo_quotes)
+            db.commit()
+
+            print("✅ Demo quotes seeded")
+
         db.close()
         engine.dispose()
         return True
@@ -160,6 +188,60 @@ def init_database():
     if not seed_initial_data():
         print("❌ Database initialization failed - seeding error")
         sys.exit(1)
+
+    # Optional: run a brief demo negotiation to showcase end-to-end
+    try:
+        if os.getenv("DEMO_MODE", "").lower() in {"1", "true", "yes"}:
+            print("🤝 Running demo negotiation…")
+            settings = get_settings()
+            engine = create_engine(settings.DATABASE_URL)
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            db: Session = SessionLocal()
+
+            # Pick the most recent pending quote
+            q = (
+                db.query(Quote)
+                .filter(Quote.status == QuoteStatus.pending)
+                .order_by(Quote.id.desc())
+                .first()
+            )
+            if q:
+                # Use the negotiation engine with a sync adapter path
+                from starlette.concurrency import run_in_threadpool
+
+                class AsyncAdapter:
+                    def __init__(self, inner):
+                        self._inner = inner
+
+                    def add(self, obj):
+                        return self._inner.add(obj)
+
+                    async def commit(self):
+                        await run_in_threadpool(self._inner.commit)
+
+                    async def refresh(self, obj):
+                        await run_in_threadpool(lambda: self._inner.refresh(obj))
+
+                    async def execute(self, stmt):
+                        return await run_in_threadpool(
+                            lambda: self._inner.execute(stmt)
+                        )
+
+                    @property
+                    def sync_session(self):
+                        return self._inner
+
+                adapter = AsyncAdapter(db)
+                engine_neg = NegotiationEngine()
+                # Initial pricing
+                import asyncio
+
+                asyncio.run(engine_neg.run_loop(adapter, q.id))
+            db.close()
+            engine.dispose()
+            print("✅ Demo negotiation completed")
+    except Exception as e:
+        print(f"⚠️  Demo negotiation skipped: {e}")
 
     print("🎉 Database initialization completed successfully!")
 

@@ -9,6 +9,7 @@ import streamlit as st
 from plot import price_trend
 
 API_BASE = os.getenv("API_BASE", "http://api:8000")
+DEMO_MODE = os.getenv("DEMO_MODE", "").lower() in {"1", "true", "yes"}
 
 
 def _format_negotiation_turn(turn: dict, turn_number: int) -> str:
@@ -222,6 +223,27 @@ with st.sidebar:
     n_quotes = st.slider("Rows", 10, 50, 20)
 
 st.title("🤖 AgentCloud - Live Quote Feed")
+if DEMO_MODE:
+    with st.sidebar:
+        st.subheader("Demo actions")
+        if st.button("Create demo quote"):
+            try:
+                resp = requests.post(
+                    f"{API_BASE}/api/v1/quotes/request",
+                    json={
+                        "buyer_id": "demo_ui",
+                        "resource_type": "GPU",
+                        "duration_hours": 2,
+                        "buyer_max_price": 12.0,
+                    },
+                    timeout=5,
+                )
+                if resp.status_code == 201:
+                    st.success("Demo quote created")
+                else:
+                    st.error(f"Failed to create demo quote: {resp.text}")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
 
 @st.cache_data(ttl=5)

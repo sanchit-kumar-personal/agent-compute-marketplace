@@ -11,6 +11,9 @@ from typing import Any, Dict, List, Optional
 
 import structlog
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+import inspect
 
 from agents.buyer import BuyerAgent
 from agents.seller import SellerAgent
@@ -52,9 +55,22 @@ class NegotiationEngine:
         self.log = structlog.get_logger(__name__)
         self.negotiation_sessions: Dict[int, NegotiationState] = {}
 
-    async def run_loop(self, db: Session, quote_id: int) -> Quote:
+    async def run_loop(self, db: Session | AsyncSession, quote_id: int) -> Quote:
         """Run initial quote pricing (first step of negotiation process)."""
-        quote: Quote | None = db.get(Quote, quote_id)
+        is_async = isinstance(db, AsyncSession) or (
+            hasattr(db, "execute")
+            and inspect.iscoroutinefunction(getattr(db, "execute"))
+        )
+        if is_async:
+            result = await db.execute(select(Quote).filter(Quote.id == quote_id))
+            quote: Quote | None = result.scalars().first()
+        else:
+            # db.get may be async if provided by an adapter
+            get_fn = getattr(db, "get")
+            if inspect.iscoroutinefunction(get_fn):
+                quote: Quote | None = await get_fn(Quote, quote_id)
+            else:
+                quote: Quote | None = db.get(Quote, quote_id)
         if not quote:
             raise ValueError(f"Quote {quote_id} not found")
 
@@ -105,7 +121,11 @@ class NegotiationEngine:
             negotiation_state.negotiation_history.append(pricing_entry)
 
             db.add(quote)
-            db.commit()
+            commit_fn = getattr(db, "commit")
+            if inspect.iscoroutinefunction(commit_fn):
+                await commit_fn()
+            else:
+                commit_fn()
 
             self.log.info(
                 "quote.priced",
@@ -122,7 +142,7 @@ class NegotiationEngine:
 
     async def negotiate(
         self,
-        db: Session,
+        db: Session | AsyncSession,
         quote_id: int,
         max_turns: int = 4,
         *,
@@ -130,7 +150,19 @@ class NegotiationEngine:
         strategy: str | None = None,
     ) -> Quote:
         """Run multi-turn negotiation between buyer and seller agents."""
-        quote: Quote | None = db.get(Quote, quote_id)
+        is_async = isinstance(db, AsyncSession) or (
+            hasattr(db, "execute")
+            and inspect.iscoroutinefunction(getattr(db, "execute"))
+        )
+        if is_async:
+            result = await db.execute(select(Quote).filter(Quote.id == quote_id))
+            quote: Quote | None = result.scalars().first()
+        else:
+            get_fn = getattr(db, "get")
+            if inspect.iscoroutinefunction(get_fn):
+                quote: Quote | None = await get_fn(Quote, quote_id)
+            else:
+                quote: Quote | None = db.get(Quote, quote_id)
         if not quote:
             raise ValueError(f"Quote {quote_id} not found")
 
@@ -229,7 +261,11 @@ class NegotiationEngine:
                     negotiation_session.state = "accepted"
 
                     db.add(quote)
-                    db.commit()
+                    commit_fn = getattr(db, "commit")
+                    if inspect.iscoroutinefunction(commit_fn):
+                        await commit_fn()
+                    else:
+                        commit_fn()
 
                     self.log.info(
                         "negotiation.accepted",
@@ -280,7 +316,11 @@ class NegotiationEngine:
                     negotiation_session.last_offer = counter_price
 
                     db.add(quote)
-                    db.commit()
+                    commit_fn = getattr(db, "commit")
+                    if inspect.iscoroutinefunction(commit_fn):
+                        await commit_fn()
+                    else:
+                        commit_fn()
 
                     self.log.info(
                         "negotiation.accepted",
@@ -297,7 +337,11 @@ class NegotiationEngine:
                     # Update quote price to reflect current negotiation state
                     quote.price = current_price
                     db.add(quote)
-                    db.commit()
+                    commit_fn = getattr(db, "commit")
+                    if inspect.iscoroutinefunction(commit_fn):
+                        await commit_fn()
+                    else:
+                        commit_fn()
 
                 elif seller_response["action"] == "reject":
                     quote.status = QuoteStatus.rejected
@@ -322,7 +366,11 @@ class NegotiationEngine:
                 negotiation_session.state = "max_turns_reached"
 
                 db.add(quote)
-                db.commit()
+                commit_fn = getattr(db, "commit")
+                if inspect.iscoroutinefunction(commit_fn):
+                    await commit_fn()
+                else:
+                    commit_fn()
 
                 self.log.info(
                     "negotiation.max_turns",

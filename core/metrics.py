@@ -15,7 +15,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 log = structlog.get_logger(__name__)
 
 # Custom metrics
-quotes_total = Counter("agentcloud_quotes_total", "Total number of quotes created")
+# Define Counter base names without the _total suffix so Prometheus client can append it correctly
+quotes_total = Counter("agentcloud_quotes", "Total number of quotes created")
 
 # Inventory metrics
 inventory_available = Gauge(
@@ -32,7 +33,7 @@ negotiation_latency = Histogram(
 )
 
 payment_success = Counter(
-    "agentcloud_payment_success_total",
+    "agentcloud_payment_success",
     "Total number of successful payments",
     ["provider"],  # Label for payment provider (stripe, paypal, etc.)
 )
