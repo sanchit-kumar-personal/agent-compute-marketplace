@@ -70,7 +70,6 @@ class MockLLM:
         self.response_content = response_content
 
     async def ainvoke(self, messages, *args, **kwargs):
-
         return AIMessage(content=self.response_content)
 
 

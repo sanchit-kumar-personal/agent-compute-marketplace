@@ -8,8 +8,8 @@ from typing import List, Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas import QuoteCreate, QuoteOut, PaymentResponse
 from agents.negotiation_engine import NegotiationEngine
@@ -28,7 +28,7 @@ from db.models import (
     ComputeResource,
     Reservation,
 )
-from db.session import get_db
+from db.session import get_async_db
 from payments.stripe_service import StripeError, StripeService
 from payments.paypal_service import PayPalService, PayPalError
 from decimal import Decimal
@@ -42,46 +42,49 @@ router = APIRouter()
 negotiation_engine = NegotiationEngine()
 
 
-def create_reservation(db: Session, quote: Quote) -> Reservation:
-    """Create a reservation after successful payment."""
-    # Check if a reservation already exists
-    existing_reservation = (
-        db.query(Reservation).filter(Reservation.quote_id == quote.id).first()
+async def create_reservation(db: AsyncSession, quote: Quote) -> Reservation:
+    """Create a reservation after successful payment (idempotent)."""
+    # Check if a reservation already exists for this quote
+    result = await db.execute(
+        select(Reservation).filter(Reservation.quote_id == quote.id)
     )
+    existing_reservation = result.scalars().first()
     if existing_reservation:
         return existing_reservation
 
-    # Get available compute resource
-    compute_resource = (
-        db.query(ComputeResource)
-        .filter(
+    # Find an available compute resource of the requested type (best-effort)
+    compute_result = await db.execute(
+        select(ComputeResource).filter(
             ComputeResource.type == quote.resource_type,
             ComputeResource.status == "available",
         )
-        .first()
     )
+    compute_resource = compute_result.scalars().first()
 
     if not compute_resource:
         raise ValueError(f"No available {quote.resource_type} resources")
 
-    # Create the reservation
+    # Create reservation matching the model schema
     reservation = Reservation(
         quote_id=quote.id,
-        resource_id=compute_resource.id,
-        start_time=datetime.now(UTC),
-        end_time=datetime.now(UTC) + timedelta(hours=quote.duration_hours),
+        resource_type=quote.resource_type,
+        quantity=1,
+        duration_hours=quote.duration_hours,
+        expires_at=datetime.now(UTC) + timedelta(hours=quote.duration_hours),
         status="active",
     )
     db.add(reservation)
 
-    # Mark the compute resource as reserved
+    # Mark one unit as reserved in inventory model for realism
     compute_resource.status = "reserved"
 
     return reservation
 
 
 @router.post("/request", status_code=201)
-async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
+async def create_quote(
+    quote_data: QuoteCreate, db: AsyncSession = Depends(get_async_db)
+):
     """
     Create a new quote request with enhanced validation and market awareness.
 
@@ -122,26 +125,48 @@ async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
         negotiation_log=[],
     )
 
-    db.add(quote)
-    db.commit()
-    db.refresh(quote)
+    # Persist using thread-safe path under SQLite adapter
+    if hasattr(db, "sync_session"):
+        # Use the underlying sync session to avoid thread switching on SQLite
+        db.sync_session.add(quote)
+        db.sync_session.commit()
+        db.sync_session.refresh(quote)
+    else:
+        db.add(quote)
+        await db.commit()
+        # Refresh to avoid accessing expired attributes under concurrent load
+        await db.refresh(quote)
 
     # Increment Prometheus counter
     quotes_total.inc()
 
-    # Add audit log
-    audit_log = AuditLog(
-        quote_id=quote.id,
-        action=AuditAction.quote_created,
-        payload={
-            "buyer_id": quote.buyer_id,
-            "resource_type": quote.resource_type,
-            "duration_hours": quote.duration_hours,
-            "buyer_max_price": float(quote.buyer_max_price),
-        },
-    )
-    db.add(audit_log)
-    db.commit()
+    # Add audit log (best-effort; don't fail request if audit insert fails)
+    try:
+        audit_log = AuditLog(
+            quote_id=quote.id,
+            action=AuditAction.quote_created,
+            payload={
+                "buyer_id": quote.buyer_id,
+                "resource_type": quote.resource_type,
+                "duration_hours": quote.duration_hours,
+                "buyer_max_price": float(quote.buyer_max_price),
+            },
+        )
+        if hasattr(db, "sync_session"):
+            db.sync_session.add(audit_log)
+            db.sync_session.commit()
+        else:
+            db.add(audit_log)
+            await db.commit()
+    except Exception as e:  # pragma: no cover
+        log.warning("audit.insert_failed", error=str(e))
+        try:
+            if hasattr(db, "sync_session"):
+                db.sync_session.rollback()
+            else:
+                await db.rollback()
+        except Exception:
+            pass
 
     log.info(
         BusinessEvents.QUOTE_CREATED,
@@ -161,19 +186,23 @@ async def create_quote(quote_data: QuoteCreate, db: Session = Depends(get_db)):
 
 @router.get("/recent")
 async def get_recent_quotes(
-    limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)
+    limit: int = Query(20, ge=1, le=100), db: AsyncSession = Depends(get_async_db)
 ):
     """
     Get recent quotes with enhanced details for dashboard display.
     """
-    quotes = db.query(Quote).order_by(desc(Quote.created_at)).limit(limit).all()
+    result = await db.execute(
+        select(Quote).order_by(desc(Quote.created_at)).limit(limit)
+    )
+    quotes = result.scalars().all()
 
     result = []
     for quote in quotes:
         # Get related transactions
-        transactions = (
-            db.query(Transaction).filter(Transaction.quote_id == quote.id).all()
+        tx_result = await db.execute(
+            select(Transaction).filter(Transaction.quote_id == quote.id)
         )
+        transactions = tx_result.scalars().all()
 
         quote_dict = {
             "id": quote.id,
@@ -204,11 +233,12 @@ async def get_recent_quotes(
 
 
 @router.get("/{quote_id}", response_model=QuoteOut)
-async def get_quote(quote_id: int, db: Session = Depends(get_db)):
+async def get_quote(quote_id: int, db: AsyncSession = Depends(get_async_db)):
     """
     Get quote details with enhanced information including negotiation history.
     """
-    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    result = await db.execute(select(Quote).filter(Quote.id == quote_id))
+    quote = result.scalars().first()
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
@@ -216,7 +246,10 @@ async def get_quote(quote_id: int, db: Session = Depends(get_db)):
     negotiation_session = negotiation_engine.get_negotiation_session(quote_id)
 
     # Get related transactions
-    transactions = db.query(Transaction).filter(Transaction.quote_id == quote_id).all()
+    tx_result = await db.execute(
+        select(Transaction).filter(Transaction.quote_id == quote_id)
+    )
+    transactions = tx_result.scalars().all()
 
     # Build enhanced response
     quote_dict = {
@@ -266,36 +299,38 @@ async def list_quotes(
     status: Optional[str] = Query(None),
     buyer_id: Optional[str] = Query(None),
     resource_type: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     List quotes with advanced filtering and pagination.
     """
-    query = db.query(Quote).order_by(desc(Quote.created_at))
+    stmt = select(Quote).order_by(desc(Quote.created_at))
 
     # Apply filters
     if status:
         try:
             status_enum = QuoteStatus(status)
-            query = query.filter(Quote.status == status_enum)
+            stmt = stmt.filter(Quote.status == status_enum)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
 
     if buyer_id:
-        query = query.filter(Quote.buyer_id == buyer_id)
+        stmt = stmt.filter(Quote.buyer_id == buyer_id)
 
     if resource_type:
-        query = query.filter(Quote.resource_type == resource_type)
+        stmt = stmt.filter(Quote.resource_type == resource_type)
 
     # Apply pagination
-    quotes = query.offset(skip).limit(limit).all()
+    result = await db.execute(stmt.offset(skip).limit(limit))
+    quotes = result.scalars().all()
 
     # Convert to response format
     result = []
     for quote in quotes:
-        transactions = (
-            db.query(Transaction).filter(Transaction.quote_id == quote.id).all()
+        tx_result = await db.execute(
+            select(Transaction).filter(Transaction.quote_id == quote.id)
         )
+        transactions = tx_result.scalars().all()
 
         quote_dict = {
             "id": quote.id,
@@ -326,11 +361,12 @@ async def list_quotes(
 
 
 @router.post("/{quote_id}/negotiate", response_model=QuoteOut)
-async def negotiate_quote(quote_id: int, db: Session = Depends(get_db)):
+async def negotiate_quote(quote_id: int, db: AsyncSession = Depends(get_async_db)):
     """
     Start initial pricing for a quote (first step of negotiation).
     """
-    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    result = await db.execute(select(Quote).filter(Quote.id == quote_id))
+    quote = result.scalars().first()
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
@@ -360,12 +396,13 @@ async def run_multi_turn_negotiation(
         pattern="^(aggressive|balanced|conservative)$",
         description="Buyer negotiation strategy",
     ),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Run sophisticated multi-turn negotiation between AI agents.
     """
-    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    result = await db.execute(select(Quote).filter(Quote.id == quote_id))
+    quote = result.scalars().first()
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
@@ -398,7 +435,7 @@ async def auto_negotiate_quote(
         pattern="^(stripe|paypal)$",
         description="Payment provider (stripe or paypal)",
     ),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     settings: Settings = Depends(get_settings),
 ):
     """
@@ -424,7 +461,8 @@ async def auto_negotiate_quote(
     - Automated procurement workflows
     - Demo and testing environments
     """
-    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    result = await db.execute(select(Quote).filter(Quote.id == quote_id))
+    quote = result.scalars().first()
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
@@ -474,9 +512,10 @@ async def auto_negotiate_quote(
                     )
                     db.add(transaction)
 
-                    # Update quote status to paid
+                    # Update quote status to paid and create reservation
                     quote.status = QuoteStatus.paid
-                    db.commit()
+                    await create_reservation(db, quote)
+                    await db.commit()
 
                     log.info(
                         "payment.success",
@@ -503,9 +542,10 @@ async def auto_negotiate_quote(
                     )
                     db.add(transaction)
 
-                    # Update quote status to paid
+                    # Update quote status to paid and create reservation
                     quote.status = QuoteStatus.paid
-                    db.commit()
+                    await create_reservation(db, quote)
+                    await db.commit()
 
                     log.info(
                         "payment.success",
@@ -606,18 +646,20 @@ async def auto_negotiate_quote(
 async def create_payment_intent(
     quote_id: int,
     provider: str = Query("stripe", pattern="^(stripe|paypal)$"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     settings: Settings = Depends(get_settings),
 ):
     """Create a payment intent for an accepted quote."""
-    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    result = await db.execute(select(Quote).filter(Quote.id == quote_id))
+    quote = result.scalars().first()
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
 
     # Check for existing payment transactions to prevent duplicates FIRST
-    existing_transaction = (
-        db.query(Transaction).filter(Transaction.quote_id == quote_id).first()
+    tx_existing = await db.execute(
+        select(Transaction).filter(Transaction.quote_id == quote_id)
     )
+    existing_transaction = tx_existing.scalars().first()
     if existing_transaction:
         raise HTTPException(
             status_code=409, detail="Quote already has a payment transaction"
@@ -643,9 +685,10 @@ async def create_payment_intent(
             )
             db.add(transaction)
 
-            # For demo purposes: mark quote as paid immediately
+            # For demo purposes: mark quote as paid immediately and create reservation
             quote.status = QuoteStatus.paid
-            db.commit()
+            await create_reservation(db, quote)
+            await db.commit()
 
             return PaymentResponse(
                 provider=provider,
@@ -673,7 +716,8 @@ async def create_payment_intent(
         )
         db.add(transaction)
         quote.status = QuoteStatus.paid
-        db.commit()
+        await create_reservation(db, quote)
+        await db.commit()
 
         return PaymentResponse(
             provider=provider,

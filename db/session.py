@@ -1,11 +1,14 @@
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
+import inspect
 
 from fastapi import Depends
+from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
+from starlette.concurrency import run_in_threadpool
 
 from core.dependencies import get_settings
 from core.settings import Settings
@@ -119,20 +122,86 @@ def store_db_in_request_state(request, db):
 
 
 async def get_async_db(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields async database sessions."""
+    """FastAPI dependency that yields async database sessions.
+
+    - If PostgreSQL is configured, returns a true AsyncSession.
+    - If running under SQLite (tests), returns an AsyncSession-like adapter that
+      executes sync operations in a threadpool to keep async routes working.
+    """
     async_engine = get_async_engine(settings)
     if async_engine is None:
-        raise RuntimeError(
-            "Async engine not available. PostgreSQL required for async operations."
-        )
+        # Fallback for SQLite in unit tests: provide an async-like adapter over a sync session
+        engine = get_engine(settings)
+        SessionLocal.configure(bind=engine)
+        sync_session = SessionLocal()
 
+        class AsyncSessionAdapter:
+            def __init__(self, inner: Session):
+                self._inner = inner
+
+            # Basic SQLAlchemy session operations
+            def add(self, instance):
+                return self._inner.add(instance)
+
+            def add_all(self, instances):
+                return self._inner.add_all(instances)
+
+            async def commit(self):
+                await run_in_threadpool(self._inner.commit)
+
+            async def rollback(self):
+                await run_in_threadpool(self._inner.rollback)
+
+            async def refresh(self, instance):
+                await run_in_threadpool(lambda: self._inner.refresh(instance))
+
+            async def get(self, model, ident):
+                return await run_in_threadpool(lambda: self._inner.get(model, ident))
+
+            async def execute(self, statement):
+                return await run_in_threadpool(lambda: self._inner.execute(statement))
+
+            async def close(self):
+                await run_in_threadpool(self._inner.close)
+
+            # Compatibility helpers
+            @property
+            def sync_session(self):
+                return self._inner
+
+        try:
+            adapter = AsyncSessionAdapter(sync_session)
+            # Expose the underlying sync session to request state for middleware reuse
+            request.state.db = sync_session
+            yield adapter  # No implicit commit; route/service controls transaction
+        except Exception:
+            # Ensure rollback if caller raised
+            try:
+                # If adapter has rollback coroutine
+                if hasattr(adapter, "rollback") and inspect.iscoroutinefunction(
+                    adapter.rollback
+                ):
+                    await adapter.rollback()
+                else:
+                    sync_session.rollback()
+            finally:
+                await run_in_threadpool(sync_session.close)
+            raise
+        else:
+            # Close when successful
+            await run_in_threadpool(sync_session.close)
+        return
+
+    # PostgreSQL async path
     AsyncSessionLocal.configure(bind=async_engine)
     async with AsyncSessionLocal() as session:
         try:
-            yield session
-            await session.commit()
+            # Store the async session on the request for middleware access
+            request.state.db = session
+            yield session  # No implicit commit; route/service controls transaction
         except Exception:
             await session.rollback()
             raise
@@ -167,7 +236,6 @@ async def get_async_session_context(
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise

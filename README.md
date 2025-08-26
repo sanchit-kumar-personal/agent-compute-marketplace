@@ -7,7 +7,7 @@
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
 [![Version](https://img.shields.io/badge/version-v1.0.0-success.svg)](https://github.com/sanchit-kumar-personal/agent-compute-marketplace/releases)
 
-> **🎬 Demo Ready!** AI-powered marketplace where autonomous agents negotiate cloud compute resources and settle payments using real-world payment rails (Stripe, PayPal). Complete with observability stack, audit trails, and 90%+ test coverage.
+> **🎬 Demo Ready!** AI-powered marketplace where autonomous agents negotiate cloud compute resources and settle payments using real-world payment rails (Stripe, PayPal). Complete with observability stack, audit trails, and ~89% test coverage.
 >
 > **🚀 v1.0.0 Production Ready** - Fully tested, documented, and ready for deployment.
 
@@ -23,7 +23,7 @@
 
 ## 🚀 Quick Start
 
-### One-Command Demo
+### One-Command Demo (Demo Mode)
 
 ```bash
 git clone https://github.com/sanchit-kumar-personal/agent-compute-marketplace.git
@@ -31,13 +31,14 @@ cd agent-compute-marketplace
 cp env.example .env
 # Add your OpenAI/Stripe/PayPal keys to .env (see Environment Setup below)
 
-docker compose up -d --build
+DEMO_MODE=1 DISABLE_TRACING=1 docker compose up -d --build
 ```
 
 **What happens automatically:**
 
 - 🗄️ Database migrations run on first startup
 - 🌱 Initial inventory seeded (100 GPU, 500 CPU, 50 TPU units)
+- 🧪 Demo quotes created; one demo negotiation may run automatically
 - 🚀 All services start with health checks
 
 **Access Points:**
@@ -59,15 +60,18 @@ curl -X POST http://localhost:8000/api/v1/quotes/request \
   -H "Content-Type: application/json" \
   -d '{"buyer_id":"demo","resource_type":"GPU","duration_hours":4,"buyer_max_price":2.0}'
 
-# 🤖 Step 3: Run AI negotiation
+# 🤖 Step 3: Run AI negotiation (initial pricing)
 QUOTE_ID=$(curl -s http://localhost:8000/api/v1/quotes/recent | jq -r '.[0].id')
 curl -X POST http://localhost:8000/api/v1/quotes/$QUOTE_ID/negotiate
 
-# 💳 Step 4: Process payment
+# 🤝 Step 4: Multi-turn negotiation (optional)
+curl -X POST http://localhost:8000/api/v1/quotes/$QUOTE_ID/negotiate/multi-turn
+
+# 💳 Step 5: Process payment
 curl -X POST http://localhost:8000/api/v1/quotes/$QUOTE_ID/payments?provider=stripe \
   -H "Content-Type: application/json"
 
-# 📊 Step 5: View audit trail
+# 📊 Step 6: View audit trail
 docker compose exec db psql -U agentcloud -d agentcloud \
   -c "SELECT action, payload FROM audit_logs ORDER BY id DESC LIMIT 3;"
 ```
@@ -106,6 +110,19 @@ docker compose up -d
 ![Agent Compute Marketplace Dashboard](docs/dashboard.png)
 
 _Live negotiation tracking with metrics, audit trails, and payment status_
+
+In Demo Mode, the dashboard sidebar includes a "Create demo quote" action. Set `API_BASE` in `.env` for local development if not using Docker (e.g., `http://localhost:8000`).
+
+## 🧪 Demo Mode vs. Production
+
+- **Demo Mode (recommended for screenshots/demos)**
+  - `DEMO_MODE=1` redacts request bodies in audit logs and hides query params in API entry logs
+  - `DISABLE_TRACING=1` disables OTEL exporters/instrumentation to keep logs clean
+  - Demo data is seeded on startup; optional one-shot negotiation runs
+- **Production**
+  - Set `METRICS_ENABLED=true` and configure `METRICS_AUTH_TOKEN` to protect `/metrics`
+  - Provide real Stripe/PayPal test keys; Stripe webhooks are recommended for real flows
+  - Limit CORS origins; configure `ENVIRONMENT=production`
 
 ---
 
@@ -177,7 +194,7 @@ agent-compute-marketplace/
 
 ## 🧪 Testing & Quality
 
-- **90%+ Test Coverage** - Comprehensive pytest suite
+- **~89% Test Coverage** - Comprehensive pytest suite
 - **CI/CD Pipeline** - GitHub Actions with PostgreSQL
 - **Code Quality** - Ruff linting + Black formatting
 - **Type Safety** - Full mypy compliance

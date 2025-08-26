@@ -6,6 +6,7 @@ It serves as the main entry point for the agent-based compute marketplace,
 where AI agents negotiate cloud compute resources and handle payments.
 """
 
+import os
 import structlog
 from contextlib import asynccontextmanager
 
@@ -34,8 +35,9 @@ async def lifespan(app: FastAPI):
     init_settings()
     settings = get_settings()
 
-    # Initialize OpenTelemetry tracing
-    init_tracer()
+    # Initialize OpenTelemetry tracing (gate by DISABLE_TRACING)
+    if os.getenv("DISABLE_TRACING", "").lower() not in {"1", "true", "yes"}:
+        init_tracer()
 
     # Initialize database (try async first, fallback to sync)
     try:
@@ -82,14 +84,15 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# Initialize FastAPI instrumentation
-FastAPIInstrumentor.instrument_app(app)
+# Initialize FastAPI instrumentation (gate by DISABLE_TRACING)
+if os.getenv("DISABLE_TRACING", "").lower() not in {"1", "true", "yes"}:
+    FastAPIInstrumentor.instrument_app(app)
 
-# Initialize Prometheus metrics
-init_metrics(app)
-
-# Add metrics authentication middleware (for production)
-add_metrics_auth_middleware(app)
+# Initialize Prometheus metrics (gate by METRICS_ENABLED)
+if os.getenv("METRICS_ENABLED", "true").lower() in {"1", "true", "yes"}:
+    init_metrics(app)
+    # Add metrics authentication middleware (for production)
+    add_metrics_auth_middleware(app)
 
 # Add logging middleware first
 app.middleware("http")(log_api_entry)
@@ -107,13 +110,16 @@ app.add_middleware(
 )
 
 
-# Global exception handler
+# Global exception handler (generic message, log details)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(
-        status_code=500,
-        content={"detail": str(exc)},
+    log.error(
+        "api.unhandled_exception",
+        path=str(request.url.path),
+        method=request.method,
+        error=str(exc),
     )
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/")

@@ -268,7 +268,6 @@ NEGOTIATION HISTORY: (This is your opening quote)
         )
 
         try:
-
             llm = get_llm()
 
             # Build negotiation context
